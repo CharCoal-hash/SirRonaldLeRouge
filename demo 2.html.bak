@@ -1,0 +1,3061 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Interactive Cube Presentation with 3D Models</title>
+<style>
+  body { margin:0; overflow:hidden; background:#010114; font-family:sans-serif; }
+  #overlay {
+    position:fixed; top:0; left:0; width:100%; height:100%;
+    background:#111; display:none; justify-content:center; align-items:center; z-index:10;
+  }
+  #slideEditorDialog textarea {
+    box-sizing:border-box; min-width:0; min-height:78px; padding:8px;
+    border:1px solid #426071; border-radius:6px; background:#10202e; color:#e9fbff;
+    font:inherit; resize:vertical;
+  }
+  #overlayContent {
+    position:relative;
+    width:90%; max-width:1280px; max-height:90%;
+    background:#222; color:white; padding:20px; border-radius:12px; text-align:center;
+    box-shadow:0 0 40px #00ffff; overflow:auto;
+  }
+  #overlayContent.photo-only {
+    box-sizing:border-box; width:min(86vw,1120px); max-width:calc(100vw - 32px);
+    max-height:calc(100vh - 32px); padding:12px; overflow:visible;
+  }
+  .slide-photo-stage {
+    position:relative; width:100%; height:min(76vh,760px); min-height:240px;
+    overflow:hidden; border-radius:8px; background:#080d18;
+  }
+  .slide-stereo-pair {
+    display:grid; grid-template-columns:repeat(2,minmax(0,1fr));
+    width:100vw; height:100vh; gap:0; background:#080d18;
+  }
+  .slide-stereo-pair.top-bottom {
+    grid-template-columns:1fr; grid-template-rows:repeat(2,minmax(0,1fr));
+  }
+  .slide-stereo-pair .slide-photo-stage {
+    width:100%; height:100%; min-height:0; border-radius:0;
+  }
+  #overlayContent.stereo-overlay {
+    box-sizing:border-box; width:100vw; max-width:none; height:100vh; max-height:none;
+    padding:0; overflow:hidden; border-radius:0; background:#080d18; box-shadow:none;
+  }
+  body.stereo-output-active #overlayContent #exitBtn {
+    top:12px; right:auto; left:calc(50% - 21px);
+  }
+  body.stereo-output-active #overlayContent.stereo-top-bottom #exitBtn {
+    top:calc(50% - 21px); left:12px;
+  }
+  .slide-photo-stage > img,
+  .slide-photo-stage > video,
+  .slide-photo-stage > canvas {
+    display:block; width:100%; height:100%; margin:0; object-fit:contain;
+    image-rendering:auto;
+  }
+  .slide-photo-stage.empty-photo { background:radial-gradient(ellipse,#203547,#09111d 72%); }
+  .slide-photo-controls {
+    position:absolute; top:12px; left:12px; z-index:2; display:flex;
+    align-items:center; gap:8px; padding:6px; border-radius:9px;
+    background:rgba(0,0,0,.72); color:#fff;
+  }
+  .slide-photo-controls button {
+    margin:0 !important; padding:5px 10px !important; background:#103044 !important;
+  }
+  .slide-photo-count { min-width:42px; text-align:center; font-size:13px; }
+  .slide-copy-overlay {
+    position:absolute; left:0; right:0; bottom:0; z-index:1;
+    box-sizing:border-box; max-height:65%; overflow:auto; padding:54px 28px 24px;
+    text-align:left; color:#fff;
+    background:linear-gradient(transparent,rgba(0,0,0,.92) 28%);
+    text-shadow:0 2px 5px #000;
+  }
+  .slide-copy-overlay h2 {
+    margin:0 0 8px; color:#fff; font-size:clamp(24px,4vw,42px);
+    line-height:1.12; overflow-wrap:anywhere;
+  }
+  .slide-copy-overlay p {
+    margin:0; max-width:900px; font-size:clamp(15px,2vw,21px);
+    line-height:1.45; overflow-wrap:anywhere;
+  }
+  .slide-copy-overlay #translationStatus {
+    min-height:1.2em; margin-top:6px; color:#b8eaff; font-size:13px;
+  }
+  #overlayContent.photo-only.empty-slide:not(.stereo-overlay) .slide-photo-stage {
+    height:min(62vh,520px); background:radial-gradient(ellipse,#203547,#09111d 72%);
+  }
+  #overlayContent.photo-only.empty-slide.stereo-overlay .slide-photo-stage {
+    height:100%; background:radial-gradient(ellipse,#203547,#09111d 72%);
+  }
+  #startupScreen {
+    position:fixed; inset:0; z-index:1000000;
+    display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(ellipse at center, #102c3b 0%, #050b18 55%, #010114 100%);
+    color:#e9fbff; text-align:center;
+  }
+  #startupCard {
+    width:min(90vw,440px); padding:32px; border-radius:18px;
+    background:rgba(4,14,28,.86); border:1px solid rgba(87,231,226,.35);
+    box-shadow:0 0 50px rgba(0,220,230,.16);
+  }
+  #startupProgress { width:100%; height:8px; margin:20px 0; accent-color:#4ce1dc; }
+  #slideEditorDialog {
+    width:min(760px,calc(100vw - 32px)); max-height:calc(100vh - 32px);
+    padding:22px; border:1px solid rgba(87,231,226,.45); border-radius:14px;
+    background:#081522; color:#e9fbff; box-shadow:0 18px 70px #000c;
+  }
+  #slideEditorDialog::backdrop { background:rgba(0,0,0,.78); backdrop-filter:blur(5px); }
+  #slideEditorDialog h2 { margin:0 0 8px; }
+  #slideEditorDialog .editor-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  #slideEditorDialog label { display:flex; flex-direction:column; gap:5px; text-align:left; font-size:13px; }
+  #slideEditorDialog input, #slideEditorDialog select {
+    box-sizing:border-box; min-width:0; padding:8px; border:1px solid #426071;
+    border-radius:6px; background:#10202e; color:#e9fbff;
+  }
+  #slideEditorDialog input[type="color"] { height:38px; padding:3px; }
+  #slideEditorDialog .editor-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:14px; }
+  #slideEditorDialog button {
+    padding:8px 12px; border:1px solid #386476; border-radius:7px;
+    background:#103044; color:#e9fbff; cursor:pointer;
+  }
+  #slideEditorDialog button:hover { background:#15506a; }
+  #slideEditorStatus { min-height:1.3em; color:#9edee4; }
+  #startupStatus { min-height:1.5em; color:#a8d9e8; }
+  #translationStatus { min-height:1.4em; color:#a8d9e8; font-size:13px; }
+  #startupLanguage { color:#e9fbff; background:#10202e; border:1px solid rgba(255,255,255,.2); border-radius:7px; padding:7px 10px; }
+  #startPresentation {
+    margin-top:12px; padding:11px 20px; border:0; border-radius:9px;
+    background:#00a6c7; color:white; font-size:15px; font-weight:700;
+  }
+  #startPresentation:disabled { opacity:.5; }
+  #languageSelect, #translateSlidesToggle {
+    color:#e9fbff; background:#10202e; border:1px solid rgba(255,255,255,.2);
+    border-radius:7px; padding:6px 8px;
+  }
+  #stereoModeSelect {
+    max-width:132px; color:#e9fbff; background:#10202e;
+    border:1px solid rgba(255,255,255,.2); border-radius:7px; padding:6px 8px;
+  }
+  #stereoDepthSelect {
+    max-width:132px; color:#e9fbff; background:#10202e;
+    border:1px solid rgba(255,255,255,.2); border-radius:7px; padding:6px 8px;
+  }
+  body.stereo-output-active #controlsPanel,
+  body.stereo-output-active #video,
+  body.stereo-output-active #handCanvas,
+  body.stereo-output-active #handCursor { display:none !important; }
+  .control-option { display:flex; align-items:center; gap:5px; white-space:nowrap; }
+  #controlsPanel {
+    position: fixed !important;
+    left: 12px !important;
+    top: 12px !important;
+    z-index: 99999 !important;
+    background: linear-gradient(135deg, rgba(6,12,30,0.7), rgba(2,6,18,0.6));
+    padding: 8px 10px !important;
+    border-radius: 10px !important;
+    color: #e6f9ff !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    box-shadow: 0 6px 18px rgba(0,255,220,0.06), inset 0 1px 0 rgba(255,255,255,0.02);
+    backdrop-filter: blur(6px) saturate(120%);
+    font-size: 13px;
+  }
+  #controlsPanel button {
+    background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+    border: 1px solid rgba(255,255,255,0.06);
+    color: #e9fbff;
+    padding: 6px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  #controlsPanel button:hover{ box-shadow: 0 4px 12px rgba(0,255,200,0.06); transform: translateY(-1px); }
+  #controlsPanel button:active{ transform: translateY(0); }
+  #controlsPanel #fpsDisplay{ min-width:68px; text-align:center; font-size:12px; opacity:0.95; }
+  #controlsPanel span{ font-size:12px; opacity:0.9; margin-left:6px; }
+  #handUiHint { max-width:150px; color:#8fffee; font-size:11px !important; }
+
+  #overlayContent h2{ margin-top:0; color:#bff6ff; }
+  #overlayContent ul{ list-style:disc; padding-left:20px; margin:12px 0; }
+  #overlayContent a{ color:#7fe3ff; text-decoration:underline; }
+  #overlayContent a:hover{ color:#a8ffff; }
+  #overlayContent button{ margin-top:12px; padding:8px 14px; border-radius:8px; border:none; background:#00a6c7; color:white; cursor:pointer; }
+  #overlayContent button:hover{ background:#00c0e3; }
+  #overlayContent #exitBtn {
+    position:fixed; top:18px; right:18px; z-index:2;
+    margin:0; width:42px; height:42px; padding:0; border-radius:50%;
+    font-size:26px; line-height:1;
+  }
+  #video, #handCanvas {
+    position:fixed; right:16px; bottom:16px; z-index:5; display:none;
+    width:min(280px, 34vw); aspect-ratio:16/9; height:auto; object-fit:cover;
+    border:1px solid rgba(133,244,255,.45); border-radius:8px;
+    box-shadow:0 8px 28px rgba(0,0,0,.45); transform:scaleX(-1);
+  }
+  #handCanvas {
+    pointer-events:none;
+    border-color:transparent;
+    box-shadow:none;
+    transform:scaleX(-1);
+  }
+  #handCursor {
+    position:fixed; z-index:1000001; display:none; width:28px; height:28px;
+    border:3px solid #63fff0; border-radius:50%; box-sizing:border-box;
+    box-shadow:0 0 14px rgba(0,255,230,.9); pointer-events:none;
+    transform:translate(-50%,-50%);
+  }
+  #handCursor.pinch { background:rgba(0,255,230,.45); border-color:#fff; transform:translate(-50%,-50%) scale(.78); }
+  .hand-ui-hover { outline:3px solid #63fff0 !important; outline-offset:3px !important; }
+  canvas { touch-action:none; }
+  @media (max-width:700px) {
+    #controlsPanel { right:8px !important; flex-wrap:wrap; max-width:calc(100vw - 40px); }
+    #video, #handCanvas { width:38vw; right:8px; bottom:8px; }
+    #slideEditorDialog .editor-grid { grid-template-columns:1fr; }
+  }
+</style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+</head>
+<body>
+
+<video id="video" autoplay muted playsinline></video>
+<canvas id="handCanvas"></canvas>
+<div id="handCursor" aria-hidden="true"></div>
+<div id="overlay"><div id="overlayContent"></div></div>
+<dialog id="slideEditorDialog" aria-labelledby="slideEditorTitle">
+  <h2 id="slideEditorTitle">Slide editor</h2>
+  <p id="shapeSummary"></p>
+  <div class="editor-grid">
+    <label for="slideEditorSelect">Slide</label>
+    <select id="slideEditorSelect"></select>
+    <label for="slideEditorTitleInput">Title on shape</label>
+    <input id="slideEditorTitleInput" maxlength="240" autocomplete="off">
+    <label for="slideEditorDescription">Description</label>
+    <textarea id="slideEditorDescription" maxlength="5000"></textarea>
+    <label for="slideEditorColor">Gradient color</label>
+    <input id="slideEditorColor" type="color">
+    <label for="slideEditorImage">Media (Photos, Videos, 3D Models .glb/.gltf)</label>
+    <input id="slideEditorImage" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,video/ogg,video/quicktime,.glb,.gltf" multiple>
+    <span></span>
+    <button id="removeSlidePhotoButton" type="button">Remove media</button>
+  </div>
+  <div class="editor-row">
+    <button id="addSlideButton" type="button">Add blank slide</button>
+    <button id="removeSelectedSlideButton" type="button">Remove selected slide</button>
+    <button id="deleteSlideButton" type="button">Delete slide</button>
+    <button id="exportSlidesButton" type="button">Export JSON</button>
+    <button id="importSlidesButton" type="button">Import JSON</button>
+    <button id="closeSlideEditorButton" type="button">Done</button>
+    <input id="importSlidesFile" type="file" accept="application/json,.json" hidden>
+  </div>
+  <p id="slideEditorStatus" role="status"></p>
+</dialog>
+<div id="startupScreen" role="dialog" aria-modal="true" aria-labelledby="startupTitle">
+<div id="startupCard">
+  <h1 id="startupTitle">Interactive Cube Presentation</h1>
+  <label for="startupLanguage">Language / Langue</label>
+  <select id="startupLanguage"><option value="fr">Français</option><option value="en">English</option></select>
+  <p id="startupStatus">Preparing slides…</p>
+  <progress id="startupProgress" max="100" value="0"></progress>
+  <div><button id="startPresentation" type="button" disabled>Preparing…</button></div>
+</div>
+</div>
+
+<script>
+// --- THREE.js Setup ---
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
+camera.position.set(0,0,6.5);
+
+const renderer = new THREE.WebGLRenderer({antialias:false, powerPreference: 'high-performance'});
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+const MAX_ANISOTROPY = renderer.capabilities.getMaxAnisotropy();
+
+function createIllusionEnvironmentTexture(){
+  const canvas=document.createElement('canvas');
+  canvas.width=1024;
+  canvas.height=512;
+  const context=canvas.getContext('2d');
+  if(!context) throw new Error('Could not create fluid illusion texture canvas');
+  const imageData=context.createImageData(canvas.width,canvas.height);
+  const colors=[
+    [5,8,35],
+    [24,28,105],
+    [12,211,209],
+    [248,50,165],
+    [224,245,91],
+    [9,12,50]
+  ];
+  const smooth=value=>value*value*(3-2*value);
+  const mix=(a,b,t)=>a+(b-a)*t;
+  for(let y=0;y<canvas.height;y++){
+    const latitude=(y/canvas.height-0.5)*Math.PI;
+    for(let x=0;x<canvas.width;x++){
+      const longitude=(x/canvas.width-0.5)*Math.PI*2;
+      const twistedLongitude=longitude+Math.sin(latitude*5.5)*0.92;
+      const phase=latitude*33+Math.sin(twistedLongitude*4.5+latitude*2.6)*2.4+twistedLongitude*2.1;
+      const rings=0.5+0.5*Math.sin(phase);
+      const veins=0.5+0.5*Math.sin(twistedLongitude*17-latitude*11+Math.sin(phase)*1.1);
+      const palettePosition=(rings*3.7+veins*0.38+0.11*Math.sin(twistedLongitude*2-latitude*7)+colors.length)%colors.length;
+      const paletteIndex=Math.floor(palettePosition);
+      const blend=smooth(palettePosition-paletteIndex);
+      const base=colors[paletteIndex];
+      const next=colors[(paletteIndex+1)%colors.length];
+      const highlight=Math.max(0,1-Math.abs(rings-0.78)*8)*0.22;
+      const pixel=(y*canvas.width+x)*4;
+      for(let channel=0;channel<3;channel++){
+        const value=mix(base[channel],next[channel],blend);
+        imageData.data[pixel+channel]=Math.round(Math.min(255,value+(channel===2?highlight*150:highlight*90)));
+      }
+      imageData.data[pixel+3]=255;
+    }
+  }
+  context.putImageData(imageData,0,0);
+  const texture=new THREE.CanvasTexture(canvas);
+  texture.wrapS=THREE.RepeatWrapping;
+  texture.wrapT=THREE.ClampToEdgeWrapping;
+  texture.minFilter=THREE.LinearMipmapLinearFilter;
+  texture.magFilter=THREE.LinearFilter;
+  texture.generateMipmaps=true;
+  return texture;
+}
+
+const illusionEnvironmentTexture=createIllusionEnvironmentTexture();
+const stereoCamera = new THREE.StereoCamera();
+const stereoDepthProfiles = {
+  natural:{eyeSeparation:0.064,focusOffset:3},
+  popout:{eyeSeparation:0.12,focusOffset:6},
+  strong:{eyeSeparation:0.18,focusOffset:9}
+};
+let stereoDepth='popout';
+let stereoMode = 'off';
+let illusionBackgroundEnabled = true;
+
+const FACE_TEXTURE_SIZE = 1024;
+const MAX_DPR = 1.5;
+const targetFps = 60;
+let lastFrameTime = performance.now();
+const getRenderPixelRatio = ()=>Math.max(1,Math.min(window.devicePixelRatio || 1,MAX_DPR));
+renderer.setPixelRatio(getRenderPixelRatio());
+
+window.addEventListener('resize', ()=>{
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(getRenderPixelRatio());
+});
+
+// --- Shape Faces ---
+const faceTexts = ["L'intro", "Fait 1", "Fait 2", "Fait 3", "Fait 4", "Fait 5", "Fait 6", "Fait 7", "Fait 8", "Fin"];
+const faceDescriptions = [
+  "Le super-héros Sir Ronald le Rouge !",
+  "Quel est son nom ?",
+  "Quelle est son origine ?",
+  "Quels sont ses super-pouvoirs et ses faiblesses ?",
+  "À quoi ressemble-t-il ?",
+  "Quels sont ses traits de personnalité ? Que défend-il ?",
+  "Quels sont ses ennemis et ses alliés ?",
+  "Quelles sont les missions qu’il a accomplies ?",
+  "A-t-il un repaire secret ?",
+  "Merci d’avoir regardé ma présentation !"
+];
+const faceColors = [0xff0000,0x00ff00,0x0000ff,0xffff00,0xff00ff,0x00ffff];
+const slideMetadata = faceTexts.map((title, index) => ({
+  title,
+  description: faceDescriptions[index] || '',
+  color: faceColors[index % faceColors.length],
+  image: '',
+  images:[],
+  metadata: index === 0 ? ['starting slide'] : []
+}));
+const REGULAR_FACE_COUNTS = [4,6,8,12,20];
+const MAX_SLIDES = REGULAR_FACE_COUNTS[REGULAR_FACE_COUNTS.length-1];
+for(let index=slideMetadata.length;index<12;index++){
+  slideMetadata.push({
+    title:'',
+    description:'',
+    color:faceColors[index % faceColors.length],
+    image:'',
+    images:[],
+    metadata:[]
+  });
+}
+let startingSlideIndex = -1;
+let endingSlideIndex = -1;
+function refreshSlideMarkers(){
+  slideMetadata.forEach(slide=>{
+    slide.metadata = slide.metadata.filter(marker=>marker !== 'starting slide' && marker !== 'ending slide');
+  });
+  if(slideMetadata.length){
+    slideMetadata[0].metadata.push('starting slide');
+    slideMetadata[slideMetadata.length-1].metadata.push('ending slide');
+  }
+  startingSlideIndex = slideMetadata.findIndex(slide=>slide.metadata.includes('starting slide'));
+  endingSlideIndex = slideMetadata.findIndex(slide=>slide.metadata.includes('ending slide'));
+}
+refreshSlideMarkers();
+
+let currentLanguage = 'fr';
+let translateSlides = false;
+const upscaledPhotoSources = new Map();
+const upscaledPhotoTargets = new Map();
+let photoPreparationGeneration = 0;
+const translatedSlideCopies = new Map();
+let slideCopyRequestId = 0;
+let faceTitleGeneration = 0;
+const uiText = {
+  fr:{
+    keys:'0 début · 9 fin · 1–8 corps · Maj+0–9 diapositives 10–19 · P début / O fin',
+    handOn:'Activer le contrôle gestuel', handOff:'Désactiver le contrôle gestuel',
+    handStarting:'Démarrage de la caméra…',
+    handLoading:'Chargement du suivi…',
+    handStartingTimeout:'La caméra ne répond pas. Vérifiez son accès puis réessayez.',
+    handLoadingTimeout:'Le suivi met trop de temps à charger. Vérifiez la connexion puis réessayez.',
+    handFailed:'Le suivi gestuel a échoué. Réessayez.',
+    handHint:'Pointez une diapositive ou commande, puis pincez pour ouvrir ou activer',
+    videoShow:'Afficher la vidéo', videoHide:'Masquer la vidéo',
+    cameraUnavailable:'Caméra indisponible', shatter:'Éclater', reset:'Réinitialiser',
+    sources:'Sources', translate:'Traduire les diapositives', exit:'Quitter la diapositive',
+    loading:'Préparation des diapositives…', ready:'Présentation prête',
+    detectingImages:'Recherche des médias des diapositives…',
+    translating:'Traduction en cours…',
+    translationError:'Traduction indisponible. Le texte original est affiché.',
+    start:'Commencer la présentation', preparing:'Préparation…',
+    loadError:'Certains médias n’ont pas pu être préparés. Vous pouvez continuer.',
+    editSlides:'Modifier les diapositives',
+    stereoLabel:'3D projecteur',
+    stereoOff:'2D',
+    stereoSideBySide:'Côte à côte',
+    stereoTopBottom:'Haut / bas',
+    stereoHelp:'Choisissez le même format 3D dans le menu du projecteur BenQ. Échap quitte la 3D. Les lunettes DLP-Link et la fréquence prise en charge dépendent du projecteur.',
+    stereoDepthLabel:'Profondeur',
+    stereoDepthNatural:'Naturelle',
+    stereoDepthPopout:'Pop-out',
+    stereoDepthStrong:'Pop-out fort',
+    backgroundShow:'Afficher le fond',
+    backgroundHide:'Masquer le fond',
+    photo:'Média',
+    previousPhoto:'Média précédent',
+    nextPhoto:'Média suivant'
+  },
+  en:{
+    keys:'0 start · 9 end · 1–8 body · Shift+0–9 slides 10–19 · P start / O end',
+    handOn:'Enable Hand Control', handOff:'Disable Hand Control',
+    handStarting:'Starting camera…',
+    handLoading:'Loading tracker…',
+    handStartingTimeout:'The camera is taking too long. Check camera permission and retry.',
+    handLoadingTimeout:'The tracker is taking too long to load. Check your connection and retry.',
+    handFailed:'Hand tracking failed. You can retry.',
+    handHint:'Point at a slide or control, then pinch to open or activate it',
+    videoShow:'Show Video', videoHide:'Hide Video',
+    cameraUnavailable:'Camera unavailable', shatter:'Shatter', reset:'Reset',
+    sources:'Sources', translate:'Translate slides', exit:'Exit Slide',
+    loading:'Preparing slides…', ready:'Presentation ready',
+    detectingImages:'Finding slide media…',
+    translating:'Translating…',
+    translationError:'Translation unavailable. Showing the original text.',
+    start:'Start Presentation', preparing:'Preparing…',
+    loadError:'Some media could not be prepared. You can continue.',
+    editSlides:'Edit Slides',
+    stereoLabel:'Projector 3D',
+    stereoOff:'2D',
+    stereoSideBySide:'Side-by-side',
+    stereoTopBottom:'Top-bottom',
+    stereoHelp:'Select the matching 3D format in the BenQ projector menu. Press Esc to leave 3D. DLP-Link glasses and supported refresh rate are controlled by the projector.',
+    stereoDepthLabel:'3D depth',
+    stereoDepthNatural:'Natural',
+    stereoDepthPopout:'Pop out',
+    stereoDepthStrong:'Strong pop out',
+    backgroundShow:'Show background',
+    backgroundHide:'Hide background',
+    photo:'Media',
+    previousPhoto:'Previous media',
+    nextPhoto:'Next media'
+  }
+};
+const languageSelect = document.getElementById('startupLanguage');
+const startupScreen = document.getElementById('startupScreen');
+const startupStatus = document.getElementById('startupStatus');
+const startupProgress = document.getElementById('startupProgress');
+const startPresentationButton = document.getElementById('startPresentation');
+let startupLoadFailed = false;
+let currentSlideIndex = null;
+let languageControl = null;
+let translationControl = null;
+let videoToggleButton = null;
+let cameraStatusElement = null;
+let resetButton = null;
+let sourcesButton = null;
+let backgroundToggleButton = null;
+let stereoModeControl = null;
+let stereoDepthControl = null;
+let slideEditorButton = null;
+let videoHidden = true;
+let currentSlidePhotoIndex = 0;
+let activeModelViewerCleanup = null;
+
+function getSlideImages(slide){
+  if(Array.isArray(slide.images) && slide.images.length) return slide.images;
+  return typeof slide.image==='string' && slide.image ? [slide.image] : [];
+}
+
+function isVideoSource(source){
+  return /^data:video\//i.test(source) ||
+    /\.(?:mp4|m4v|webm|ogv|ogg|mov)(?:$|[?#])/i.test(source);
+}
+
+function isModelSource(source){
+  return /^data:model\/gltf/i.test(source) ||
+    /^data:application\/octet-stream;base64,/i.test(source) ||
+    /^data:;base64,/i.test(source) ||
+    /\.(?:glb|gltf)(?:$|[?#])/i.test(source);
+}
+
+function setSlideImages(slide,images){
+  const unique=[];
+  for(const source of images){
+    if(!unique.includes(source)) unique.push(source);
+  }
+  slide.images=unique;
+  slide.image=slide.images[0] || '';
+}
+
+function getCurrentSlidePhotoSource(index=currentSlidePhotoIndex){
+  if(currentSlideIndex===null) return '';
+  const slide=slideMetadata[currentSlideIndex];
+  const images=getSlideImages(slide);
+  if(!images.length) return '';
+  const safeIndex=THREE.MathUtils.euclideanModulo(index,images.length);
+  const source=images[safeIndex] || '';
+  if(isVideoSource(source) || isModelSource(source)) return source;
+  return upscaledPhotoSources.get(source) || source;
+}
+
+function updateSlidePhotoDisplay(){
+  if(activeModelViewerCleanup){
+    activeModelViewerCleanup();
+    activeModelViewerCleanup = null;
+  }
+  const slide=currentSlideIndex===null?null:slideMetadata[currentSlideIndex];
+  if(!slide) return;
+  const images=getSlideImages(slide);
+  currentSlidePhotoIndex=images.length?THREE.MathUtils.euclideanModulo(currentSlidePhotoIndex,images.length):0;
+  const source=getCurrentSlidePhotoSource();
+  const videoSource=source && isVideoSource(source);
+  const modelSource=source && isModelSource(source);
+
+  overlayContent.querySelectorAll('.slide-photo-stage').forEach(stage=>{
+    if(modelSource){
+      stage.querySelectorAll("#slidePhoto,[data-slide-photo],canvas,video,img,.model-status-overlay").forEach(el=>el.remove());
+      
+      const statusOverlay = document.createElement('div');
+      statusOverlay.className = 'model-status-overlay';
+      statusOverlay.style.cssText = 'position:absolute; bottom:16px; left:50%; transform:translateX(-50%); background:rgba(6,12,30,0.85); border:1px solid rgba(87,231,226,0.4); padding:8px 16px; border-radius:8px; color:#e9fbff; font-size:13px; z-index:10; pointer-events:none; display:flex; align-items:center; gap:10px; backdrop-filter:blur(4px);';
+      statusOverlay.innerHTML = '<span class="model-status-text">Loading 3D Model...</span><div style="width:100px; height:6px; background:rgba(255,255,255,0.15); border-radius:3px; overflow:hidden;"><div class="model-progress-fill" style="width:0%; height:100%; background:#4ce1dc; transition:width 0.1s ease;"></div></div>';
+      stage.append(statusOverlay);
+
+      const canvas=document.createElement('canvas');
+      canvas.setAttribute('data-slide-photo','');
+      canvas.style.width = '100%';
+      canvas.style.height = '100%';
+      stage.prepend(canvas);
+
+      const getStageWidth = () => stage.clientWidth || stage.parentElement.clientWidth || 800;
+      const getStageHeight = () => stage.clientHeight || stage.parentElement.clientHeight || 600;
+
+      const mScene = new THREE.Scene();
+      mScene.background = new THREE.Color(0x080d18);
+      
+      const mCamera = new THREE.PerspectiveCamera(45, getStageWidth() / getStageHeight(), 0.1, 5000);
+      mCamera.position.set(0, 0, 5);
+      
+      const mRenderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true, powerPreference:'high-performance'});
+      mRenderer.setSize(getStageWidth(), getStageHeight(), false);
+      mRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+      const ambientLight = new THREE.AmbientLight(0xffffff, 1.8);
+      mScene.add(ambientLight);
+      const dirLight1 = new THREE.DirectionalLight(0xffffff, 2.5);
+      dirLight1.position.set(10, 20, 15);
+      mScene.add(dirLight1);
+      const dirLight2 = new THREE.DirectionalLight(0xffffff, 1.2);
+      dirLight2.position.set(-10, -10, -10);
+      mScene.add(dirLight2);
+      const dirLight3 = new THREE.DirectionalLight(0x90e0ef, 1.0);
+      dirLight3.position.set(0, -20, 10);
+      mScene.add(dirLight3);
+
+      const ControlsClass = window.OrbitControls || THREE.OrbitControls;
+      const controls = new ControlsClass(mCamera, canvas);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+
+      const mixers = [];
+      const mClock = new THREE.Clock();
+      let animId;
+
+      const animateModel = ()=>{
+        animId = requestAnimationFrame(animateModel);
+        const delta = Math.min(mClock.getDelta(), 0.1);
+        mixers.forEach(mixer => mixer.update(delta));
+        controls.update();
+        mRenderer.render(mScene, mCamera);
+      };
+      animateModel();
+
+      try {
+        const LoaderClass = window.GLTFLoader || THREE.GLTFLoader;
+        const loader = new LoaderClass();
+        loader.load(source, (gltf) => {
+          const overlayEl = stage.querySelector('.model-status-overlay');
+          if (overlayEl) {
+            overlayEl.querySelector('.model-status-text').textContent = 'Model loaded successfully';
+            overlayEl.querySelector('.model-progress-fill').style.width = '100%';
+            setTimeout(() => overlayEl.remove(), 1200);
+          }
+          const model = gltf.scene;
+          model.updateMatrixWorld(true);
+
+          model.traverse((child) => {
+            if (child.isMesh) {
+              child.frustumCulled = false;
+              if (child.material) {
+                child.material.side = THREE.DoubleSide;
+                child.material.needsUpdate = true;
+              }
+            }
+          });
+
+          const box = new THREE.Box3().setFromObject(model);
+          const size = box.getSize(new THREE.Vector3());
+          const center = box.getCenter(new THREE.Vector3());
+          const maxDim = Math.max(size.x, size.y, size.z) || 1;
+
+          const targetScale = 2.0 / maxDim;
+          model.scale.setScalar(targetScale);
+          model.position.sub(center.multiplyScalar(targetScale));
+
+          mScene.add(model);
+
+          const distance = Math.max(4.0, maxDim * 2.2);
+          mCamera.position.set(0, size.y * 0.15, distance);
+          controls.target.set(0, 0, 0);
+          controls.update();
+
+          if (gltf.animations && gltf.animations.length) {
+            const mixer = new THREE.AnimationMixer(model);
+            gltf.animations.forEach(clip => mixer.clipAction(clip).play());
+            mixers.push(mixer);
+            mClock.start();
+          }
+        }, (xhr) => {
+          if (xhr.lengthComputable) {
+            const percent = Math.round((xhr.loaded / xhr.total) * 100);
+            const overlayEl = stage.querySelector('.model-status-overlay');
+            if (overlayEl) {
+              overlayEl.querySelector('.model-status-text').textContent = `Loading 3D Model (${percent}%)`;
+              overlayEl.querySelector('.model-progress-fill').style.width = `${percent}%`;
+            }
+          }
+        }, (err) => {
+          console.error("Error loading 3D model:", err);
+          const overlayEl = stage.querySelector('.model-status-overlay');
+          if (overlayEl) {
+            overlayEl.querySelector('.model-status-text').textContent = 'Error loading model';
+          }
+        });
+      } catch(e) {
+        console.error("GLTFLoader initialization failed:", e);
+      }
+
+      const resizeObserver = new ResizeObserver(()=>{
+        if(!canvas.parentElement) return;
+        const w = getStageWidth();
+        const h = getStageHeight();
+        mCamera.aspect = w / h;
+        mCamera.updateProjectionMatrix();
+        mRenderer.setSize(w, h, false);
+      });
+      resizeObserver.observe(stage);
+
+      activeModelViewerCleanup = ()=>{
+        cancelAnimationFrame(animId);
+        resizeObserver.disconnect();
+        controls.dispose();
+        mRenderer.dispose();
+      };
+    } else if(videoSource){
+      stage.querySelectorAll("canvas").forEach(c => c.remove());
+      const currentMedia=stage.querySelector('#slidePhoto,[data-slide-photo]');
+      if(currentMedia?.tagName==='VIDEO' && currentMedia.src===new URL(source,document.baseURI).href){
+        currentMedia.hidden=false;
+        currentMedia.dataset.imageIndex=String(currentSlidePhotoIndex);
+      } else {
+        currentMedia?.remove?.();
+        const video=document.createElement('video');
+        video.setAttribute('data-slide-photo','');
+        video.src=source;
+        video.autoplay=true;
+        video.loop=true;
+        video.muted=true;
+        video.playsInline=true;
+        video.controls=true;
+        video.preload='metadata';
+        video.setAttribute('aria-label',slide.title);
+        video.dataset.imageIndex=String(currentSlidePhotoIndex);
+        stage.prepend(video);
+        video.play().catch(error=>{
+          if(error.name!=='AbortError') console.error('Unable to play slide video:',error);
+        });
+      }
+    } else {
+      stage.querySelectorAll("canvas,video").forEach(el => el.remove());
+      let image=stage.querySelector('#slidePhoto,[data-slide-photo]');
+      if(!image){
+        image=document.createElement('img');
+        image.setAttribute('data-slide-photo','');
+        stage.prepend(image);
+      }
+      if(source) image.src=source;
+      else image.removeAttribute('src');
+      image.alt=slide.title;
+      image.hidden=!source;
+      image.dataset.imageIndex=String(currentSlidePhotoIndex);
+    }
+    stage.classList.toggle('empty-photo',!source);
+  });
+
+  overlayContent.querySelectorAll('.slide-photo-controls button').forEach(button=>{
+    const isPrevious=button.classList.contains('previous-photo');
+    button.setAttribute('aria-label',isPrevious?uiText[currentLanguage].previousPhoto:uiText[currentLanguage].nextPhoto);
+    button.title=isPrevious?uiText[currentLanguage].previousPhoto:uiText[currentLanguage].nextPhoto;
+  });
+  overlayContent.querySelectorAll('.slide-photo-count').forEach(count=>{
+    count.textContent=images.length?`${currentSlidePhotoIndex+1} / ${images.length}`:'0 / 0';
+  });
+  overlayContent.querySelectorAll('.slide-photo-controls button').forEach(button=>{
+    button.disabled=images.length<2;
+  });
+  overlayContent.classList.toggle('empty-slide',!images.length);
+}
+
+function changeSlidePhoto(direction){
+  if(currentSlideIndex===null) return;
+  const images=getSlideImages(slideMetadata[currentSlideIndex]);
+  if(images.length<2) return;
+  currentSlidePhotoIndex=THREE.MathUtils.euclideanModulo(currentSlidePhotoIndex+direction,images.length);
+  updateSlidePhotoDisplay();
+}
+
+function setStereoMode(mode){
+  if(!['off','side-by-side','top-bottom'].includes(mode)){
+    throw new Error(`Unsupported stereo output mode: ${mode}`);
+  }
+  stereoMode=mode;
+  if(stereoModeControl) stereoModeControl.value=mode;
+  document.body.classList.toggle('stereo-output-active',mode!=='off');
+  if(mode==='off'){
+    const size=new THREE.Vector2();
+    renderer.getSize(size);
+    camera.aspect=size.width/size.height;
+    camera.updateProjectionMatrix();
+    renderer.setScissorTest(false);
+    renderer.setViewport(0,0,size.width,size.height);
+  }
+}
+
+function setStereoDepth(depth){
+  if(!Object.prototype.hasOwnProperty.call(stereoDepthProfiles,depth)){
+    throw new Error(`Unsupported stereo depth profile: ${depth}`);
+  }
+  stereoDepth=depth;
+  if(stereoDepthControl) stereoDepthControl.value=depth;
+}
+
+function setIllusionBackgroundVisible(visible){
+  illusionBackgroundEnabled=visible;
+  illusionBackground.visible=visible;
+  if(backgroundToggleButton){
+    backgroundToggleButton.textContent=visible
+      ?uiText[currentLanguage].backgroundHide
+      :uiText[currentLanguage].backgroundShow;
+    backgroundToggleButton.setAttribute('aria-pressed',String(visible));
+  }
+}
+
+function renderStereoScene(){
+  const size=new THREE.Vector2();
+  renderer.getSize(size);
+  camera.aspect=size.width/size.height;
+  camera.updateProjectionMatrix();
+  const depthProfile=stereoDepthProfiles[stereoDepth];
+  stereoCamera.eyeSep=depthProfile.eyeSeparation;
+  camera.focus=Math.max(camera.near+0.1,camera.position.length()+depthProfile.focusOffset);
+  stereoCamera.aspect=stereoMode==='side-by-side'?0.5:2;
+  stereoCamera.update(camera);
+  renderer.setScissorTest(true);
+  renderer.setScissor(0,0,size.width,size.height);
+  renderer.setViewport(0,0,size.width,size.height);
+  renderer.clear(true,true,true);
+
+  if(stereoMode==='side-by-side'){
+    const leftWidth=Math.floor(size.width/2);
+    const rightWidth=size.width-leftWidth;
+    renderer.setScissor(0,0,leftWidth,size.height);
+    renderer.setViewport(0,0,leftWidth,size.height);
+    renderer.render(scene,stereoCamera.cameraL);
+    renderer.setScissor(leftWidth,0,rightWidth,size.height);
+    renderer.setViewport(leftWidth,0,rightWidth,size.height);
+    renderer.render(scene,stereoCamera.cameraR);
+  } else {
+    const eyeHeight=Math.floor(size.height/2);
+    const topHeight=size.height-eyeHeight;
+    renderer.setScissor(0,eyeHeight,size.width,topHeight);
+    renderer.setViewport(0,eyeHeight,size.width,topHeight);
+    renderer.render(scene,stereoCamera.cameraL);
+    renderer.setScissor(0,0,size.width,eyeHeight);
+    renderer.setViewport(0,0,size.width,eyeHeight);
+    renderer.render(scene,stereoCamera.cameraR);
+  }
+
+  renderer.setScissorTest(false);
+  renderer.setViewport(0,0,size.width,size.height);
+  camera.aspect=size.width/size.height;
+  camera.updateProjectionMatrix();
+}
+
+function getSlideCopy(index){
+  return slideMetadata[index];
+}
+
+function saveSelectedSlideDescription(){
+  if(slideMetadata[selectedEditorSlide]){
+    slideMetadata[selectedEditorSlide].description = slideEditorDescription.value;
+  }
+}
+
+function refreshOpenSlideCopy(){
+  if(currentSlideIndex === null || !overlayContent.querySelector('#slideTitle,[data-slide-title]')) return;
+  const index = currentSlideIndex;
+  const requestId = ++slideCopyRequestId;
+  const sourceCopy = getSlideCopy(index);
+  const applyCopy = copy => {
+    if(requestId !== slideCopyRequestId || currentSlideIndex !== index) return;
+    overlayContent.querySelectorAll('#slideTitle,[data-slide-title]').forEach(element=>{
+      element.textContent=copy.title;
+    });
+    overlayContent.querySelectorAll('#slideDescription,[data-slide-description]').forEach(element=>{
+      element.textContent=copy.description;
+    });
+    overlayContent.querySelectorAll('#slidePhoto,[data-slide-photo]').forEach(element=>{
+      element.alt=copy.title;
+    });
+  };
+  applyCopy(sourceCopy);
+  overlayContent.querySelectorAll('#translationStatus,[data-translation-status]').forEach(element=>{
+    element.textContent='';
+  });
+  if(!translateSlides || currentLanguage !== 'en') return;
+
+  const cacheKey = `${currentLanguage}:${index}`;
+  const cachedCopy = translatedSlideCopies.get(cacheKey);
+  if(cachedCopy){
+    applyCopy(cachedCopy);
+    return;
+  }
+
+  overlayContent.querySelectorAll('#translationStatus,[data-translation-status]').forEach(element=>{
+    element.textContent=uiText[currentLanguage].translating;
+  });
+  translateSlideCopy(sourceCopy, currentLanguage).then(copy=>{
+    translatedSlideCopies.set(cacheKey,copy);
+    applyCopy(copy);
+    if(requestId === slideCopyRequestId){
+      overlayContent.querySelectorAll('#translationStatus,[data-translation-status]').forEach(element=>{
+        element.textContent='';
+      });
+    }
+  }).catch(error=>{
+    console.error(`Unable to translate slide ${index + 1}:`,error);
+    if(requestId === slideCopyRequestId){
+      overlayContent.querySelectorAll('#translationStatus,[data-translation-status]').forEach(element=>{
+        element.textContent=uiText[currentLanguage].translationError;
+      });
+    }
+  });
+}
+
+async function translateText(text, targetLanguage){
+  if(!text.trim()) return text;
+  const parameters = new URLSearchParams({
+    q:text,
+    langpair:`fr|${targetLanguage}`
+  });
+  const response = await fetch(`https://api.mymemory.translated.net/get?${parameters}`);
+  if(!response.ok) throw new Error(`Translation service returned HTTP ${response.status}`);
+  const result = await response.json();
+  const translatedText = result.responseData?.translatedText;
+  if(result.responseStatus !== 200 || typeof translatedText !== 'string' || !translatedText.trim()){
+    throw new Error(result.responseDetails || 'Translation service returned no translated text');
+  }
+  const decodedText = document.createElement('textarea');
+  decodedText.innerHTML = translatedText;
+  return decodedText.value;
+}
+
+async function translateSlideCopy(slide, targetLanguage){
+  const [title,description] = await Promise.all([
+    translateText(slide.title,targetLanguage),
+    translateText(slide.description,targetLanguage)
+  ]);
+  return {title,description};
+}
+
+function applyLanguage(language){
+  currentLanguage = language === 'en' ? 'en' : 'fr';
+  document.documentElement.lang = currentLanguage;
+  const text = uiText[currentLanguage];
+  if(languageSelect) languageSelect.value = currentLanguage;
+  if(languageControl) languageControl.value = currentLanguage;
+  const keyHint = document.getElementById('keyHint');
+  if(keyHint) keyHint.textContent = text.keys;
+  updateHandTrackingControls(
+    handTrackingState==='failed'?text.handFailed:
+      handTrackingState==='starting-camera'?text.handStarting:
+      handTrackingState==='loading-model'?text.handLoading:''
+  );
+  if(handUiHintElement) handUiHintElement.textContent = text.handHint;
+  if(videoToggleButton) videoToggleButton.textContent = videoHidden ? text.videoShow : text.videoHide;
+  if(cameraStatusElement && cameraStatusElement.textContent !== 'Hand tracking failed'){
+    cameraStatusElement.textContent = text.cameraUnavailable;
+  }
+  if(shatterButton) shatterButton.textContent = text.shatter;
+  if(resetButton) resetButton.textContent = text.reset;
+  if(sourcesButton) sourcesButton.textContent = text.sources;
+  if(slideEditorButton) slideEditorButton.textContent = text.editSlides;
+  if(stereoModeControl){
+    const options=stereoModeControl.options;
+    options[0].textContent=text.stereoOff;
+    options[1].textContent=text.stereoSideBySide;
+    options[2].textContent=text.stereoTopBottom;
+    stereoModeControl.title=text.stereoHelp;
+    stereoModeControl.setAttribute('aria-label',text.stereoLabel);
+    stereoModeControl.parentElement.firstChild.textContent=`${text.stereoLabel}: `;
+  }
+  if(stereoDepthControl){
+    const options=stereoDepthControl.options;
+    options[0].textContent=text.stereoDepthNatural;
+    options[1].textContent=text.stereoDepthPopout;
+    options[2].textContent=text.stereoDepthStrong;
+    stereoDepthControl.setAttribute('aria-label',text.stereoDepthLabel);
+    stereoDepthControl.title=text.stereoHelp;
+    stereoDepthControl.parentElement.firstChild.textContent=`${text.stereoDepthLabel}: `;
+  }
+  if(backgroundToggleButton){
+    backgroundToggleButton.textContent=illusionBackgroundEnabled?text.backgroundHide:text.backgroundShow;
+    backgroundToggleButton.title=illusionBackgroundEnabled?text.backgroundHide:text.backgroundShow;
+    backgroundToggleButton.setAttribute('aria-pressed',String(illusionBackgroundEnabled));
+  }
+  overlayContent.querySelectorAll('.slide-photo-controls button').forEach(button=>{
+    const isPrevious=button.classList.contains('previous-photo');
+    button.setAttribute('aria-label',isPrevious?text.previousPhoto:text.nextPhoto);
+    button.title=isPrevious?text.previousPhoto:text.nextPhoto;
+  });
+  if(slideEditorDialog.open) renderSlideEditor();
+  const translationLabel = document.getElementById('translationLabel');
+  if(translationLabel) translationLabel.lastChild.textContent = text.translate;
+  updateCubeFaceTitles();
+  const startupTitle = document.getElementById('startupTitle');
+  if(startupTitle) startupTitle.textContent = currentLanguage === 'fr' ? 'Présentation interactive du cube' : 'Interactive Cube Presentation';
+  if(startupStatus) startupStatus.textContent = startupProgress.value < 100 ? text.loading : startupLoadFailed ? text.loadError : text.ready;
+  if(startPresentationButton) startPresentationButton.textContent = startPresentationButton.disabled ? text.preparing : text.start;
+  refreshOpenSlideCopy();
+}
+
+const cube = new THREE.Group();
+scene.add(cube);
+
+const faceMeshes = [];
+const size = 2;
+let faceRotationTargets = [];
+
+function createSlideFaceGeometry(points,uvPoints,outward){
+  const triangleIndices = [];
+  for(let index=1;index<points.length-1;index++) triangleIndices.push(0,index,index+1);
+  const firstEdge = points[triangleIndices[1]].clone().sub(points[triangleIndices[0]]);
+  const secondEdge = points[triangleIndices[2]].clone().sub(points[triangleIndices[0]]);
+  const faceNormal = firstEdge.cross(secondEdge).normalize();
+  const centroid = points.reduce((sum,point)=>sum.add(point),new THREE.Vector3()).multiplyScalar(1/points.length);
+  if(faceNormal.dot(outward) < 0){
+    faceNormal.negate();
+    for(let index=0;index<triangleIndices.length;index+=3){
+      [triangleIndices[index+1],triangleIndices[index+2]]=[triangleIndices[index+2],triangleIndices[index+1]];
+    }
+  }
+  const positions = [];
+  const uvs = [];
+  triangleIndices.forEach(index=>{
+    positions.push(points[index].x,points[index].y,points[index].z);
+    uvs.push(uvPoints[index].x,uvPoints[index].y);
+  });
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  geometry.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
+  geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
+  geometry.userData.faceNormal = faceNormal;
+  geometry.userData.faceCenter = centroid;
+  return geometry;
+}
+
+function createRegularSolidFaces(faceCount){
+  const geometries = {
+    4:new THREE.TetrahedronGeometry(1,0),
+    6:new THREE.BoxGeometry(2,2,2),
+    8:new THREE.OctahedronGeometry(1,0),
+    12:new THREE.DodecahedronGeometry(1,0),
+    20:new THREE.IcosahedronGeometry(1,0)
+  };
+  const sourceGeometry = geometries[faceCount];
+  if(!sourceGeometry) throw new Error(`No regular solid is defined for ${faceCount} faces`);
+  const position = sourceGeometry.attributes.position;
+  const index = sourceGeometry.index;
+  const triangleCount = (index ? index.count : position.count)/3;
+  const faceMap = new Map();
+  const readVertex = vertexIndex => new THREE.Vector3().fromBufferAttribute(position,vertexIndex);
+  const pointKey = point => `${point.x.toFixed(5)},${point.y.toFixed(5)},${point.z.toFixed(5)}`;
+
+  for(let triangle=0;triangle<triangleCount;triangle++){
+    const vertexIndices = [0,1,2].map(offset=>{
+      const element=triangle*3+offset;
+      return index ? index.getX(element) : element;
+    });
+    const points = vertexIndices.map(readVertex);
+    const normal = points[1].clone().sub(points[0]).cross(points[2].clone().sub(points[0])).normalize();
+    const plane = normal.dot(points[0]);
+    const key = [normal.x,normal.y,normal.z,plane]
+      .map(value=>Math.abs(value)<0.0005?'0':Number(value.toFixed(3)).toString())
+      .join(',');
+    let face = faceMap.get(key);
+    if(!face){
+      face={normal,vertices:new Map()};
+      faceMap.set(key,face);
+    }
+    points.forEach(point=>face.vertices.set(pointKey(point),point));
+  }
+  sourceGeometry.dispose();
+
+  return [...faceMap.values()].map(face=>{
+    const points=[...face.vertices.values()];
+    const center=points.reduce((sum,point)=>sum.add(point),new THREE.Vector3()).multiplyScalar(1/points.length);
+    const tangent=points[0].clone().sub(center).normalize();
+    const bitangent=face.normal.clone().cross(tangent).normalize();
+    points.sort((a,b)=>{
+      const da=a.clone().sub(center),db=b.clone().sub(center);
+      return Math.atan2(da.dot(bitangent),da.dot(tangent))-Math.atan2(db.dot(bitangent),db.dot(tangent));
+    });
+    const projected=points.map(point=>{
+      const relative=point.clone().sub(center);
+      return {u:relative.dot(tangent),v:relative.dot(bitangent)};
+    });
+    const minU=Math.min(...projected.map(point=>point.u));
+    const maxU=Math.max(...projected.map(point=>point.u));
+    const minV=Math.min(...projected.map(point=>point.v));
+    const maxV=Math.max(...projected.map(point=>point.v));
+    const uvPoints=projected.map(point=>new THREE.Vector2(
+      0.08+0.84*(point.u-minU)/Math.max(maxU-minU,1e-8),
+      0.08+0.84*(point.v-minV)/Math.max(maxV-minV,1e-8)
+    ));
+    return {points,uvPoints,normal:face.normal,center};
+  });
+}
+
+const faceCanvases = [];
+const faceGradientMaterials = [];
+const faceTitleMeshes = [];
+const fragmentFillTexture = new THREE.DataTexture(
+  new Uint8Array([255,255,255,255]),
+  1,1,THREE.RGBAFormat
+);
+fragmentFillTexture.needsUpdate = true;
+
+function drawFaceCanvasTitle(index,title){
+  const canvas = faceCanvases[index];
+  const context = canvas.getContext('2d');
+  if(!context) throw new Error(`Could not draw title on cube face ${index+1}`);
+  const scale=canvas.width/512;
+  const logicalSize=canvas.width/scale;
+  context.setTransform(scale,0,0,scale,0,0);
+  context.clearRect(0,0,logicalSize,logicalSize);
+
+  let fontSize = 86;
+  let lines;
+  do {
+    context.font = `700 ${fontSize}px sans-serif`;
+    lines = [];
+    let line = '';
+    for(const word of title.split(/\s+/)){
+      const candidate = line ? `${line} ${word}` : word;
+      if(line && context.measureText(candidate).width > logicalSize-56){
+        lines.push(line);
+        line = word;
+      } else {
+        line = candidate;
+      }
+    }
+    if(line) lines.push(line);
+    if(lines.length <= 3 || fontSize <= 42) break;
+    fontSize -= 4;
+  } while(true);
+
+  const lineHeight = fontSize*1.16;
+  const centerY = logicalSize/2;
+  const startY = centerY-(lines.length-1)*lineHeight/2;
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.lineJoin = 'round';
+  context.lineWidth = 5;
+  context.strokeStyle = 'rgba(0,0,0,.68)';
+  context.fillStyle = '#fff';
+  context.shadowColor = 'rgba(0,0,0,.5)';
+  context.shadowBlur = 3;
+  lines.forEach((line,lineIndex)=>{
+    const y = startY+lineIndex*lineHeight;
+    context.strokeText(line,logicalSize/2,y,logicalSize-48);
+    context.fillText(line,logicalSize/2,y,logicalSize-48);
+  });
+}
+
+function createFaceCanvas(index){
+  const canvas = document.createElement('canvas');
+  canvas.width = FACE_TEXTURE_SIZE; canvas.height = FACE_TEXTURE_SIZE;
+  faceCanvases[index] = canvas;
+  drawFaceCanvasTitle(index,slideMetadata[index].title);
+  return canvas;
+}
+
+function createGradientFaceMaterial(index,texture){
+  const material = new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide});
+  const baseColor = new THREE.Color(slideMetadata[index].color);
+  const timeUniform = {value:0};
+  material.userData.gradientTime = timeUniform;
+  material.userData.gradientColor = baseColor;
+  material.onBeforeCompile = shader=>{
+    shader.uniforms.uGradientTime = timeUniform;
+    shader.uniforms.uGradientColor = {value:baseColor};
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <common>',
+      '#include <common>\nuniform float uGradientTime;\nuniform vec3 uGradientColor;'
+    );
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <map_fragment>',
+      `#ifdef USE_MAP
+        vec2 patternUv = vUv - vec2(0.5);
+        float radius = length(patternUv);
+        float angle = atan(patternUv.y,patternUv.x);
+        float spiralPhase = radius * 42.0 - angle * 5.0 - uGradientTime * 0.9;
+        float spiral = 0.5 + 0.5 * sin(spiralPhase);
+        float ripple = 0.5 + 0.5 * sin(radius * 24.0 - uGradientTime * 0.55);
+        float pattern = clamp(0.58 * spiral + 0.42 * ripple,0.0,1.0);
+        pattern = smoothstep(0.08,0.92,pattern);
+        vec3 darkTone = uGradientColor * 0.3;
+        vec3 lightTone = mix(uGradientColor, vec3(1.0), 0.3);
+        vec3 gradientTone = mix(darkTone, lightTone, 0.28 + pattern * 0.5);
+        diffuseColor.rgb = gradientTone;
+        diffuseColor.a = 1.0;
+      #endif`
+    );
+  };
+  return material;
+}
+
+function rebuildSlideShape(){
+  const count = slideMetadata.length;
+  if(!REGULAR_FACE_COUNTS.includes(count)) {
+    throw new Error(`Regular solids support ${REGULAR_FACE_COUNTS.join(', ')} faces`);
+  }
+  faceMeshes.forEach(mesh=>{
+    cube.remove(mesh);
+    mesh.geometry.dispose();
+    mesh.material.map.dispose();
+    mesh.material.dispose();
+  });
+  faceTitleMeshes.forEach(mesh=>{
+    cube.remove(mesh);
+    mesh.geometry.dispose();
+    mesh.material.dispose();
+  });
+  faceMeshes.length = 0;
+  faceCanvases.length = 0;
+  faceGradientMaterials.length = 0;
+  faceTitleMeshes.length = 0;
+  faceRotationTargets = [];
+  const faces=createRegularSolidFaces(count);
+
+  for(let index=0;index<count;index++){
+    const {points,uvPoints,normal,center}=faces[index];
+    const geometry = createSlideFaceGeometry(points,uvPoints,normal);
+    geometry.userData.faceCenter.copy(center);
+    const canvas = createFaceCanvas(index);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    texture.flipY = true;
+    texture.minFilter = THREE.LinearMipMapLinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.generateMipmaps = true;
+    texture.anisotropy = MAX_ANISOTROPY;
+    const material = createGradientFaceMaterial(index,texture);
+    const mesh = new THREE.Mesh(geometry,material);
+    mesh.userData.index = index;
+    mesh.userData.originalPosition = mesh.position.clone();
+    mesh.userData.originalScale = mesh.scale.clone();
+    mesh.userData.textureFlipY = texture.flipY;
+    cube.add(mesh);
+    faceMeshes.push(mesh);
+    faceGradientMaterials.push(material);
+    const titleGeometry=geometry.clone();
+    const titleOffset=geometry.userData.faceNormal.clone().multiplyScalar(0.004);
+    titleGeometry.translate(titleOffset.x,titleOffset.y,titleOffset.z);
+    const titleMesh=new THREE.Mesh(titleGeometry,new THREE.MeshBasicMaterial({
+      map:texture,
+      transparent:true,
+      depthWrite:false,
+      side:THREE.DoubleSide,
+      toneMapped:false,
+      polygonOffset:true,
+      polygonOffsetFactor:-1,
+      polygonOffsetUnits:-1
+    }));
+    titleMesh.renderOrder=mesh.renderOrder+1;
+    titleMesh.userData.index=index;
+    cube.add(titleMesh);
+    faceTitleMeshes.push(titleMesh);
+    const upDirection = points.reduce((direction,point)=>direction.add(point),new THREE.Vector3())
+      .multiplyScalar(1/points.length)
+      .sub(center);
+    if(upDirection.lengthSq()<1e-8) upDirection.copy(points[0]).sub(center);
+    const faceNormal = geometry.userData.faceNormal;
+    upDirection.addScaledVector(faceNormal,-upDirection.dot(faceNormal)).normalize();
+    const alignNormal = new THREE.Quaternion().setFromUnitVectors(faceNormal,new THREE.Vector3(0,0,1));
+    const alignedUp = upDirection.applyQuaternion(alignNormal);
+    alignedUp.z = 0;
+    alignedUp.normalize();
+    const roll = Math.atan2(alignedUp.x,alignedUp.y);
+    const alignUp = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-roll);
+    faceRotationTargets.push(new THREE.Euler().setFromQuaternion(alignUp.multiply(alignNormal),'XYZ'));
+  }
+  faceTitleGeneration++;
+  updateCubeFaceTitles();
+}
+
+rebuildSlideShape();
+
+function updateCubeFaceTitles(){
+  const generation = ++faceTitleGeneration;
+  slideMetadata.forEach((slide,index)=>{
+    const cacheKey = `${currentLanguage}:${index}`;
+    const cachedCopy = translatedSlideCopies.get(cacheKey);
+    if(!faceCanvases[index] || !faceMeshes[index]) return;
+    drawFaceCanvasTitle(index,translateSlides && currentLanguage === 'en' && cachedCopy ? cachedCopy.title : slide.title);
+    faceMeshes[index].material.map.needsUpdate = true;
+  });
+  if(!translateSlides || currentLanguage !== 'en') return;
+  slideMetadata.forEach((slide,index)=>{
+    const cacheKey = `${currentLanguage}:${index}`;
+    if(translatedSlideCopies.has(cacheKey)) return;
+    translateText(slide.title,currentLanguage).then(title=>{
+      const cachedCopy = translatedSlideCopies.get(cacheKey);
+      translatedSlideCopies.set(cacheKey,{title,description:cachedCopy?.description || slide.description});
+      if(generation !== faceTitleGeneration || !translateSlides || currentLanguage !== 'en' || !faceMeshes[index]) return;
+      drawFaceCanvasTitle(index,title);
+      faceMeshes[index].material.map.needsUpdate = true;
+    }).catch(error=>{
+      console.error(`Unable to translate cube face title ${index+1}:`,error);
+    });
+  });
+}
+
+// --- Overlay ---
+const overlay = document.getElementById('overlay');
+const overlayContent = document.getElementById('overlayContent');
+let slideOpeningTimeline = null;
+
+function updateSlidePhotoScale(){
+  overlayContent.querySelectorAll('#slidePhoto,[data-slide-photo]').forEach(slidePhoto=>{
+    slidePhoto.style.width='';
+    slidePhoto.style.height='';
+  });
+}
+
+window.addEventListener('resize',updateSlidePhotoScale);
+
+function openFace(i){
+  const slide = slideMetadata[i];
+  if(!slide) return;
+  currentSlideIndex = i;
+  if(slideOpeningTimeline) slideOpeningTimeline.kill();
+  cube.userData.prevRotation = cube.rotation.clone();
+
+  currentSlidePhotoIndex=0;
+  overlayContent.replaceChildren();
+  const stage=document.createElement('div');
+  stage.className='slide-photo-stage';
+  const image=document.createElement('img');
+  image.id='slidePhoto';
+  stage.append(image);
+  const photoControls=document.createElement('div');
+  photoControls.className='slide-photo-controls';
+  const previousPhotoButton=document.createElement('button');
+  previousPhotoButton.type='button';
+  previousPhotoButton.className='previous-photo';
+  previousPhotoButton.textContent='‹';
+  previousPhotoButton.setAttribute('aria-label','Previous media');
+  previousPhotoButton.addEventListener('click',()=>changeSlidePhoto(-1));
+  const photoCount=document.createElement('span');
+  photoCount.className='slide-photo-count';
+  const nextPhotoButton=document.createElement('button');
+  nextPhotoButton.type='button';
+  nextPhotoButton.className='next-photo';
+  nextPhotoButton.textContent='›';
+  nextPhotoButton.setAttribute('aria-label','Next media');
+  nextPhotoButton.addEventListener('click',()=>changeSlidePhoto(1));
+  photoControls.append(previousPhotoButton,photoCount,nextPhotoButton);
+  stage.append(photoControls);
+  const copy=document.createElement('div');
+  copy.className='slide-copy-overlay';
+  const title=document.createElement('h2');
+  title.id='slideTitle';
+  const description=document.createElement('p');
+  description.id='slideDescription';
+  const status=document.createElement('div');
+  status.id='translationStatus';
+  status.setAttribute('aria-live','polite');
+  copy.append(title,description,status);
+  stage.append(copy);
+  if(stereoMode==='off'){
+    overlayContent.append(stage);
+    overlayContent.classList.remove('stereo-overlay');
+    overlayContent.classList.remove('stereo-top-bottom');
+  } else {
+    const pair=document.createElement('div');
+    pair.className=`slide-stereo-pair ${stereoMode}`;
+    const rightStage=stage.cloneNode(true);
+    rightStage.querySelectorAll('[id]').forEach(element=>{
+      const copyId=element.id;
+      element.removeAttribute('id');
+      if(copyId==='slidePhoto') element.setAttribute('data-slide-photo','');
+      else if(copyId==='slideTitle') element.setAttribute('data-slide-title','');
+      else if(copyId==='slideDescription') element.setAttribute('data-slide-description','');
+      else if(copyId==='translationStatus') element.setAttribute('data-translation-status','');
+    });
+    rightStage.querySelector('[aria-label="Previous media"]').addEventListener('click',()=>changeSlidePhoto(-1));
+    rightStage.querySelector('[aria-label="Next media"]').addEventListener('click',()=>changeSlidePhoto(1));
+    pair.append(stage,rightStage);
+    overlayContent.append(pair);
+    overlayContent.classList.add('stereo-overlay');
+    overlayContent.classList.toggle('stereo-top-bottom',stereoMode==='top-bottom');
+  }
+  const exitButton=document.createElement('button');
+  exitButton.id='exitBtn';
+  exitButton.type='button';
+  exitButton.setAttribute('aria-label',uiText[currentLanguage].exit);
+  exitButton.title=uiText[currentLanguage].exit;
+  exitButton.textContent='×';
+  overlayContent.append(exitButton);
+  overlayContent.classList.add('photo-only');
+  updateSlidePhotoDisplay();
+  refreshOpenSlideCopy();
+  updateSlidePhotoScale();
+  overlay.style.display='flex';
+  const slideElements = Array.from(overlayContent.children);
+  gsap.set(overlay, {autoAlpha:0});
+  gsap.set(overlayContent, {
+    autoAlpha:0,
+    y:38,
+    scale:0.94,
+    rotationX:-5,
+    transformPerspective:900,
+    transformOrigin:'50% 0%'
+  });
+  gsap.set(slideElements, {autoAlpha:0, y:18});
+  slideOpeningTimeline = gsap.timeline();
+  slideOpeningTimeline
+    .to(overlay, {autoAlpha:1, duration:0.28, ease:'power1.out'}, 0)
+    .to(overlayContent, {autoAlpha:1, y:0, scale:1, rotationX:0, duration:0.72, ease:'power3.out'}, 0.03)
+    .to(slideElements, {autoAlpha:1, y:0, duration:0.48, stagger:0.09, ease:'power2.out'}, 0.16);
+
+  cube.userData.animating = true;
+  gsap.to(cube.rotation,{y:'+='+Math.PI*2, x:'+='+Math.PI*1, duration:1.5, ease:'power2.inOut', onComplete:()=>{cube.userData.animating=false;}});
+
+  function closeOverlay(){
+    overlay.removeEventListener('click', onOverlayClick);
+    overlayContent.querySelectorAll('video').forEach(video=>video.pause());
+    if(activeModelViewerCleanup){
+      activeModelViewerCleanup();
+      activeModelViewerCleanup = null;
+    }
+    slideCopyRequestId++;
+    if(slideOpeningTimeline) slideOpeningTimeline.kill();
+    gsap.killTweensOf(cube.rotation);
+    if(cube.userData.prevRotation){
+      gsap.to(cube.rotation,{
+        x: cube.userData.prevRotation.x,
+        y: cube.userData.prevRotation.y,
+        z: cube.userData.prevRotation.z,
+        duration: 0.8,
+        ease: 'power2.inOut'
+      });
+      cube.userData.prevRotation = null;
+    }
+    slideOpeningTimeline = gsap.timeline({
+      onComplete:()=>{
+        overlay.style.display = 'none';
+        overlayContent.classList.remove('photo-only');
+        overlayContent.classList.remove('empty-slide');
+        overlayContent.classList.remove('stereo-overlay');
+        overlayContent.classList.remove('stereo-top-bottom');
+        currentSlideIndex = null;
+        gsap.set([overlay,overlayContent], {clearProps:'opacity,visibility,transform'});
+        cube.userData.animating = false;
+        slideOpeningTimeline = null;
+      }
+    });
+    slideOpeningTimeline
+      .to(overlayContent, {autoAlpha:0, y:-14, scale:0.98, duration:0.22, ease:'power2.in'}, 0)
+      .to(overlay, {autoAlpha:0, duration:0.28, ease:'power1.in'}, 0.04);
+  }
+
+  const exitBtn = document.getElementById('exitBtn');
+  if(exitBtn) exitBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); closeOverlay(); });
+
+  function onOverlayClick(ev){
+    if(ev.target === overlay) closeOverlay();
+  }
+  overlay.addEventListener('click', onOverlayClick);
+}
+
+function openSources(){
+  const sources = [
+    'https://en.wikipedia.org/wiki/Zebroid#Historical_and_notable_zebroids',
+    'https://a-z-animals.com/animals/zorse/',
+    'https://www.softschools.com/facts/hybrid_animals/zorse_facts/2704/',
+    'https://factanimal.com/zorse/'
+  ];
+  overlayContent.innerHTML = `<h2>${uiText[currentLanguage].sources}</h2>` +
+    '<ul style="text-align:left;max-width:640px;margin:8px auto;font-size:15px;">' +
+    sources.map(s => `<li style="margin:6px 0;"><a href="${s}" target="_blank" rel="noopener noreferrer">${s}</a></li>`).join('') +
+    '</ul>' +
+    `<div style="text-align:center;margin-top:12px;"><button id="exitBtn">${currentLanguage === 'fr' ? 'Fermer' : 'Close'}</button></div>`;
+  overlay.style.display = 'flex';
+
+  function closeOverlay(){
+    overlay.style.display = 'none';
+  }
+  const exitBtn = document.getElementById('exitBtn');
+  if(exitBtn) exitBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); closeOverlay(); });
+  overlay.addEventListener('click', function onOverlayClick(ev){
+    if(ev.target === overlay){ overlay.removeEventListener('click', onOverlayClick); closeOverlay(); }
+  });
+}
+
+const glowMaterial = new THREE.MeshBasicMaterial({
+  color:0x00ffff,
+  transparent:true,
+  opacity:0.02,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending
+});
+const glowCube = new THREE.Mesh(new THREE.SphereGeometry(1.35,32,24), glowMaterial);
+glowCube.renderOrder = 999;
+scene.add(glowCube);
+
+const illusionEnvironmentUvShader=`
+  vec2 illusionEnvironmentUv(vec3 direction,float time){
+    direction=normalize(direction);
+    float longitude=atan(direction.z,direction.x);
+    float latitude=asin(clamp(direction.y,-1.0,1.0));
+    longitude+=0.055*sin(latitude*8.0+time*0.32);
+    latitude+=0.022*sin(longitude*7.0-time*0.24)+0.012*sin(latitude*19.0+time*0.4);
+    return vec2(longitude/6.28318530718+0.5,latitude/3.14159265359+0.5);
+  }
+`;
+
+const illusionBackgroundMaterial=new THREE.MeshBasicMaterial({
+  map:illusionEnvironmentTexture,
+  side:THREE.BackSide,
+  depthWrite:false,
+  depthTest:false,
+  toneMapped:false
+});
+const illusionBackground=new THREE.Mesh(new THREE.SphereGeometry(48,48,32),illusionBackgroundMaterial);
+illusionBackground.renderOrder=-1000;
+illusionBackground.position.copy(camera.position);
+illusionBackground.quaternion.copy(camera.quaternion);
+illusionBackground.scale.setScalar(0.985);
+scene.add(illusionBackground);
+
+const liquidMaterial = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime: {value:0},
+    uOpacity: {value:0.8},
+    uIllusionMap:{value:illusionEnvironmentTexture}
+  },
+  vertexShader: `
+    uniform float uTime;
+    uniform float uOpacity;
+    varying float vAlpha;
+    varying vec3 vNormalView;
+    varying vec3 vViewDirection;
+    void main(){
+      float wave = sin(position.x*3.1 + uTime*1.25)
+                 * sin(position.y*3.7 - uTime*0.95)
+                 * sin(position.z*3.3 + uTime*0.8);
+      float swell = 0.035*wave
+                + 0.018*sin(position.y*5.0 + uTime*1.4)
+                + 0.012*sin(position.x*7.0-position.z*5.0+uTime*1.1);
+      vec3 displaced = position + normal*swell;
+      vec4 viewPosition = modelViewMatrix*vec4(displaced,1.0);
+      vNormalView=normalize(normalMatrix*normal);
+      vViewDirection=normalize(-viewPosition.xyz);
+      float facing = abs(dot(vNormalView,vViewDirection));
+      float rim = 1.0-facing;
+      vAlpha = (0.018 + rim*rim*0.42)*uOpacity;
+      gl_Position = projectionMatrix*viewPosition;
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D uIllusionMap;
+    uniform float uTime;
+    varying float vAlpha;
+    varying vec3 vNormalView;
+    varying vec3 vViewDirection;
+    ${illusionEnvironmentUvShader}
+    void main(){
+      vec3 reflectedDirection=reflect(-normalize(vViewDirection),normalize(vNormalView));
+      reflectedDirection=normalize(reflectedDirection+vec3(
+        sin(uTime*0.9+vNormalView.y*8.0),
+        sin(uTime*0.7+vNormalView.z*9.0),
+        sin(uTime*0.8+vNormalView.x*7.0)
+      )*0.075);
+      vec3 reflection=texture2D(uIllusionMap,illusionEnvironmentUv(reflectedDirection,uTime)).rgb;
+      vec3 fluidColor=mix(vec3(0.12,0.72,0.92),reflection,0.72);
+      gl_FragColor=vec4(fluidColor,vAlpha);
+    }
+  `,
+  transparent:true,
+  depthWrite:false,
+  side:THREE.FrontSide,
+  blending:THREE.NormalBlending
+});
+
+const roundedShell = new THREE.Mesh(new THREE.SphereGeometry(1,16,12), liquidMaterial);
+roundedShell.scale.setScalar(1.92);
+roundedShell.renderOrder = 998;
+scene.add(roundedShell);
+
+const MAX_FLUID_BARS = MAX_SLIDES*4;
+let fluidBarCount = Math.max(12, slideMetadata.length * 4);
+const fluidBarMaterial = new THREE.MeshBasicMaterial({color:0x57e7e2, transparent:true, opacity:0.72, depthWrite:false, blending:THREE.AdditiveBlending});
+const fluidBars = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.045, 0.045, 0.7, 10, 1), fluidBarMaterial, MAX_FLUID_BARS);
+fluidBars.count = fluidBarCount;
+fluidBars.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+fluidBars.renderOrder = 997;
+scene.add(fluidBars);
+const fluidBarTransforms = [];
+const fluidBarPhases = [];
+for(let i=0;i<MAX_FLUID_BARS;i++){
+  const fluidBarTransform = new THREE.Object3D();
+  const angle = i/fluidBarCount*Math.PI*2;
+  const radius = 2.3 + Math.sin(i*0.57)*0.08;
+  fluidBarPhases.push(i*0.83);
+  fluidBarTransforms.push(fluidBarTransform);
+  fluidBarTransform.position.set(Math.cos(angle)*radius,Math.sin(angle)*radius,-1.35);
+  fluidBarTransform.rotation.set(0,0,angle-Math.PI/2);
+  fluidBarTransform.scale.set(1,1,1);
+  fluidBarTransform.updateMatrix();
+  fluidBars.setMatrixAt(i,fluidBarTransform.matrix);
+}
+fluidBars.instanceMatrix.needsUpdate = true;
+
+function syncFluidBarLayout(){
+  fluidBarCount = Math.max(12,slideMetadata.length*4);
+  fluidBars.count = fluidBarCount;
+  for(let index=0;index<fluidBarCount;index++){
+    const angle = index/fluidBarCount*Math.PI*2;
+    const radius = 2.3 + Math.sin(index*0.57)*0.08;
+    const transform = fluidBarTransforms[index];
+    transform.position.set(Math.cos(angle)*radius,Math.sin(angle)*radius,-1.35);
+    transform.rotation.set(0,0,angle-Math.PI/2);
+    transform.scale.set(1,1,1);
+    transform.updateMatrix();
+    fluidBars.setMatrixAt(index,transform.matrix);
+  }
+  fluidBars.instanceMatrix.needsUpdate = true;
+}
+
+const _liquidOriginalOpacity = liquidMaterial.uniforms.uOpacity.value;
+const _glowOriginalOpacity = glowMaterial.opacity;
+const _cubeOriginalScale = cube.scale.clone();
+const _cubeOriginalRotation = cube.rotation.clone();
+const _fluidBarOriginalOpacity = fluidBarMaterial.opacity;
+let explosionGroup = null;
+let isShattered = false;
+let isResetting = false;
+let shatterButton = null;
+let shatterCompleteCall = null;
+let resetTimeline = null;
+const rumbleState = {value:0};
+const cameraHome = camera.position.clone();
+
+let video = document.getElementById('video');
+let handCanvas = document.getElementById('handCanvas');
+let handCtx = handCanvas.getContext('2d');
+const handCursor = document.getElementById('handCursor');
+let previousHandCenter = null;
+let pinchZoomStart = null;
+let handPinchActive = false;
+let handPinchOnUi = false;
+let handCursorPosition = null;
+let handCursorTarget = null;
+let dualHandStartDistance = null;
+let dualHandStartScale = 1;
+const SMOOTH_ALPHA = 0.22;
+const handRotationTarget = new THREE.Vector2(cube.rotation.x,cube.rotation.y);
+let handScaleTarget = cube.scale.x;
+let handZoomTarget = camera.position.z;
+let hasHandControlInput = false;
+let handTrackingEnabled = false;
+let handTrackingState = 'off';
+let handTrackingGeneration = 0;
+let handTrackingStartupTimeout = null;
+let handTrackingStream = null;
+let handTrackingButton = null;
+let handUiHintElement = null;
+let handWorker = null;
+let handWorkerUrl = null;
+let handWorkerReady = false;
+let handFrameInFlight = false;
+let lastVideoFrameTime = -1;
+
+const HAND_CAMERA_TIMEOUT_MS=15000;
+const HAND_TRACKER_TIMEOUT_MS=30000;
+
+function updateHandTrackingControls(message=''){
+  const text=uiText[currentLanguage];
+  if(handTrackingButton){
+    handTrackingButton.disabled=handTrackingState==='starting-camera' || handTrackingState==='loading-model';
+    handTrackingButton.textContent=handTrackingState==='active'?text.handOff:
+      handTrackingState==='starting-camera'?text.handStarting:
+      handTrackingState==='loading-model'?text.handLoading:text.handOn;
+    handTrackingButton.title=text.handHint;
+  }
+  const status=document.getElementById('cameraStatus');
+  if(status){
+    status.textContent=message;
+    status.style.display=message?'inline':'none';
+  }
+}
+
+function withTimeout(promise,timeoutMs,message){
+  let timeoutId;
+  const timeout=new Promise((_,reject)=>{
+    timeoutId=setTimeout(()=>reject(new Error(message)),timeoutMs);
+  });
+  return Promise.race([promise,timeout]).finally(()=>clearTimeout(timeoutId));
+}
+
+function createPerformanceControls(){
+  const ctrl = document.createElement('div');
+  ctrl.id = 'controlsPanel';
+
+  languageControl = document.createElement('select');
+  languageControl.id = 'languageSelect';
+  languageControl.setAttribute('aria-label','Interface language');
+  languageControl.innerHTML = '<option value="fr">Français</option><option value="en">English</option>';
+  languageControl.addEventListener('change',()=>applyLanguage(languageControl.value));
+  ctrl.appendChild(languageControl);
+
+  const fpsDisplay = document.createElement('div');
+  fpsDisplay.id = 'fpsDisplay';
+  fpsDisplay.style.display = 'inline-block';
+  fpsDisplay.style.minWidth = '56px';
+  fpsDisplay.style.textAlign = 'center';
+  fpsDisplay.style.marginLeft = '6px';
+  fpsDisplay.style.fontSize = '12px';
+  fpsDisplay.textContent = 'FPS: --';
+  ctrl.appendChild(fpsDisplay);
+
+  const keyHint = document.createElement('span');
+  keyHint.id = 'keyHint';
+  keyHint.style.marginLeft = '8px';
+  keyHint.style.fontSize = '12px';
+  keyHint.style.opacity = '0.9';
+  ctrl.appendChild(keyHint);
+
+  const depthLabel=document.createElement('label');
+  depthLabel.className='control-option';
+  stereoDepthControl=document.createElement('select');
+  stereoDepthControl.id='stereoDepthSelect';
+  stereoDepthControl.innerHTML='<option value="natural"></option><option value="popout"></option><option value="strong"></option>';
+  stereoDepthControl.value=stereoDepth;
+  stereoDepthControl.addEventListener('change',()=>{
+    setStereoDepth(stereoDepthControl.value);
+    stereoDepthControl.blur();
+  });
+  depthLabel.append(document.createTextNode(''),stereoDepthControl);
+  ctrl.appendChild(depthLabel);
+
+  backgroundToggleButton=document.createElement('button');
+  backgroundToggleButton.id='backgroundToggleButton';
+  backgroundToggleButton.type='button';
+  backgroundToggleButton.addEventListener('click',()=>{
+    setIllusionBackgroundVisible(!illusionBackgroundEnabled);
+  });
+  ctrl.appendChild(backgroundToggleButton);
+
+  const stereoLabel=document.createElement('label');
+  stereoLabel.className='control-option';
+  stereoModeControl=document.createElement('select');
+  stereoModeControl.id='stereoModeSelect';
+  stereoModeControl.innerHTML='<option value="off"></option><option value="side-by-side"></option><option value="top-bottom"></option>';
+  stereoModeControl.addEventListener('change',()=>{
+    setStereoMode(stereoModeControl.value);
+    stereoModeControl.blur();
+  });
+  stereoLabel.append(document.createTextNode(''),stereoModeControl);
+  ctrl.appendChild(stereoLabel);
+
+  handTrackingButton = document.createElement('button');
+  handTrackingButton.title = 'Enable 60 Hz hand tracking; disable it to release the camera';
+  handTrackingButton.addEventListener('click', ()=>{
+    if(handTrackingEnabled) stopHandTracking();
+    else startHandTracking();
+  });
+  ctrl.appendChild(handTrackingButton);
+  handUiHintElement = document.createElement('span');
+  handUiHintElement.id = 'handUiHint';
+  handUiHintElement.style.display = 'none';
+  ctrl.appendChild(handUiHintElement);
+
+  const translationLabel = document.createElement('label');
+  translationLabel.className = 'control-option';
+  translationControl = document.createElement('input');
+  translationControl.type = 'checkbox';
+  translationControl.id = 'translateSlidesToggle';
+  translationControl.addEventListener('change',()=>{
+    translateSlides = translationControl.checked;
+    updateCubeFaceTitles();
+    refreshOpenSlideCopy();
+  });
+  translationLabel.append(translationControl,document.createTextNode(''));
+  translationLabel.id = 'translationLabel';
+  ctrl.appendChild(translationLabel);
+
+  videoToggleButton = document.createElement('button');
+  videoToggleButton.title = 'Hide or show the live video preview';
+  videoToggleButton.addEventListener('click', ()=>{
+    videoHidden = !videoHidden;
+    if(!videoHidden && !handTrackingEnabled) startHandTracking();
+    video.style.display = videoHidden ? 'none' : 'block';
+    handCanvas.style.display = videoHidden ? 'none' : 'block';
+    videoToggleButton.textContent = videoHidden ? uiText[currentLanguage].videoShow : uiText[currentLanguage].videoHide;
+  });
+  ctrl.appendChild(videoToggleButton);
+  cameraStatusElement = document.createElement('span');
+  cameraStatusElement.id = 'cameraStatus';
+  cameraStatusElement.style.display = 'none';
+  ctrl.appendChild(cameraStatusElement);
+  
+  const endBtn = document.createElement('button');
+  endBtn.style.marginLeft = '6px';
+  shatterButton = endBtn;
+  endBtn.addEventListener('click', ()=>{ explodeCube(); });
+  ctrl.appendChild(endBtn);
+
+  const resetBtn = document.createElement('button');
+  resetButton = resetBtn;
+  resetBtn.style.marginLeft = '6px';
+  resetBtn.addEventListener('click', ()=>{ resetCube(); });
+  ctrl.appendChild(resetBtn);
+
+  const sourcesBtn = document.createElement('button');
+  sourcesButton = sourcesBtn;
+  sourcesBtn.style.marginLeft = '6px';
+  sourcesBtn.title = 'Show reference sources';
+  sourcesBtn.addEventListener('click', ()=>{ openSources(); });
+  ctrl.appendChild(sourcesBtn);
+
+  slideEditorButton = document.createElement('button');
+  slideEditorButton.type = 'button';
+  slideEditorButton.addEventListener('click',openSlideEditor);
+  ctrl.appendChild(slideEditorButton);
+  document.body.appendChild(ctrl);
+  document.getElementById('translationLabel').append(document.createTextNode(uiText[currentLanguage].translate));
+  applyLanguage(currentLanguage);
+}
+
+window.addEventListener('load', ()=>{ createPerformanceControls(); });
+
+languageSelect.addEventListener('change',()=>applyLanguage(languageSelect.value));
+startPresentationButton.addEventListener('click',()=>{
+  if(startPresentationButton.disabled) return;
+  gsap.to(document.getElementById('startupScreen'),{
+    autoAlpha:0,
+    duration:0.45,
+    ease:'power1.out',
+    onComplete:()=>{document.getElementById('startupScreen').style.display='none';}
+  });
+});
+
+const slideEditorDialog = document.getElementById('slideEditorDialog');
+const slideEditorSelect = document.getElementById('slideEditorSelect');
+const slideEditorTitleInput = document.getElementById('slideEditorTitleInput');
+const slideEditorDescription = document.getElementById('slideEditorDescription');
+const slideEditorColor = document.getElementById('slideEditorColor');
+const slideEditorImage = document.getElementById('slideEditorImage');
+const slideEditorStatus = document.getElementById('slideEditorStatus');
+const slideEditorLabels = {
+  fr:{
+    title:'Éditeur de diapositives',slide:'Diapositive',faceTitle:'Titre affiché sur la forme',
+    description:'Description',color:'Couleur du dégradé',photo:'Médias (Photos, Vidéos, Modèles 3D .glb/.gltf)',removePhoto:'Supprimer les médias',add:'Solide régulier suivant (faces vides)',
+    remove:'Réduire au solide précédent',export:'Exporter JSON',import:'Importer JSON',done:'Terminer',
+    blank:'vide',shape:'Solide platonicien régulier · {count} faces',added:'Diapositives vides ajoutées jusqu’au prochain solide régulier.',
+    removeSlide:'Vider la diapositive sélectionnée',confirmRemoveSlide:'Supprimer le titre, la description et les médias de cette face ?',
+    slideRemoved:'Contenu de la diapositive supprimé.',
+    removed:'Réduit au solide régulier précédent.',photoRemoved:'Média supprimé.',saved:'Diapositives exportées.',loaded:'Diapositives importées.',
+    noSpace:'Le solide régulier maximal a déjà 20 faces.',
+    minimum:'Le tétraèdre à 4 faces est le plus petit solide régulier.',
+    confirmReduce:'Réduire à {count} faces supprimera les {removed} dernières diapositives. Continuer ?',
+    badDeck:'Fichier invalide. Choisissez 4, 6, 8, 12 ou 20 diapositives.',
+    badPhoto:'Choisissez un fichier média valide (.png, .jpg, .webp, .mp4, .webm, .glb, .gltf).',
+    photoAdded:'Média ajouté.',readError:'Impossible de lire le fichier sélectionné.'
+  },
+  en:{
+    title:'Slide editor',slide:'Slide',faceTitle:'Title shown on shape',
+    description:'Description',color:'Gradient color',photo:'Media (Photos, Videos, 3D Models .glb/.gltf)',removePhoto:'Remove media',add:'Next regular solid (blank slides)',
+    remove:'Reduce to previous solid',export:'Export JSON',import:'Import JSON',done:'Done',
+    blank:'blank',shape:'Regular Platonic solid · {count} faces',added:'Blank faces added for the next regular solid.',
+    removeSlide:'Remove selected slide content',confirmRemoveSlide:'Remove the title, description, and media from this face?',
+    slideRemoved:'Selected slide content removed.',
+    removed:'Reduced to the previous regular solid.',photoRemoved:'Media removed.',saved:'Slides exported.',loaded:'Slides imported.',
+    noSpace:'The largest regular solid has 20 faces.',
+    minimum:'The 4-face tetrahedron is the smallest regular solid.',
+    confirmReduce:'Reducing to {count} faces will remove the last {removed} slides. Continue?',
+    badDeck:'Invalid file. Choose 4, 6, 8, 12, or 20 slides.',
+    badPhoto:'Choose a valid media file (.png, .jpg, .webp, .mp4, .webm, .glb, .gltf).',
+    photoAdded:'Media added.',readError:'Could not read the selected file.'
+  }
+};
+let selectedEditorSlide = 0;
+
+function renderSlideEditor(){
+  const text = slideEditorLabels[currentLanguage];
+  document.getElementById('slideEditorTitle').textContent = text.title;
+  document.querySelector('label[for="slideEditorSelect"]').textContent = text.slide;
+  document.querySelector('label[for="slideEditorTitleInput"]').textContent = text.faceTitle;
+  document.querySelector('label[for="slideEditorDescription"]').textContent = text.description;
+  document.querySelector('label[for="slideEditorColor"]').textContent = text.color;
+  document.querySelector('label[for="slideEditorImage"]').textContent = text.photo;
+  document.getElementById('addSlideButton').textContent = text.add;
+  document.getElementById('removeSelectedSlideButton').textContent = text.removeSlide;
+  document.getElementById('deleteSlideButton').textContent = text.remove;
+  document.getElementById('exportSlidesButton').textContent = text.export;
+  document.getElementById('importSlidesButton').textContent = text.import;
+  document.getElementById('closeSlideEditorButton').textContent = text.done;
+  document.getElementById('removeSlidePhotoButton').textContent = text.removePhoto;
+  document.getElementById('shapeSummary').textContent = text.shape.replace('{count}',String(slideMetadata.length));
+  slideEditorSelect.replaceChildren();
+  slideMetadata.forEach((slide,index)=>{
+    const option = document.createElement('option');
+    option.value = String(index);
+    option.textContent = `${index+1}. ${slide.title || `(${text.blank})`}`;
+    slideEditorSelect.append(option);
+  });
+  selectedEditorSlide = THREE.MathUtils.clamp(selectedEditorSlide,0,slideMetadata.length-1);
+  slideEditorSelect.value = String(selectedEditorSlide);
+  const slide = slideMetadata[selectedEditorSlide];
+  slideEditorTitleInput.value = slide.title;
+  slideEditorDescription.value = slide.description;
+  slideEditorColor.value = `#${new THREE.Color(slide.color).getHexString()}`;
+  slideEditorImage.value = '';
+  document.getElementById('addSlideButton').disabled = slideMetadata.length >= MAX_SLIDES;
+  document.getElementById('deleteSlideButton').disabled = slideMetadata.length <= REGULAR_FACE_COUNTS[0];
+}
+
+function redrawSelectedSlideTitle(){
+  const slide = slideMetadata[selectedEditorSlide];
+  if(!slide) return;
+  slide.title = slideEditorTitleInput.value;
+  translatedSlideCopies.clear();
+  updateCubeFaceTitles();
+  renderSlideEditor();
+  slideEditorSelect.value = String(selectedEditorSlide);
+}
+
+function recolorSelectedSlide(){
+  const slide = slideMetadata[selectedEditorSlide];
+  const material = faceGradientMaterials[selectedEditorSlide];
+  if(!slide || !material) return;
+  slide.color = Number.parseInt(slideEditorColor.value.slice(1),16);
+  material.userData.gradientColor.set(slide.color);
+}
+
+function finishSlideDeckChange(){
+  refreshSlideMarkers();
+  selectedEditorSlide = Math.min(selectedEditorSlide,slideMetadata.length-1);
+  translatedSlideCopies.clear();
+  rebuildSlideShape();
+  syncFluidBarLayout();
+  renderSlideEditor();
+}
+
+function openSlideEditor(){
+  if(isShattered) resetCube();
+  slideEditorStatus.textContent = '';
+  renderSlideEditor();
+  slideEditorDialog.showModal();
+}
+
+slideEditorSelect.addEventListener('change',()=>{
+  selectedEditorSlide = Number(slideEditorSelect.value);
+  renderSlideEditor();
+});
+slideEditorTitleInput.addEventListener('change',redrawSelectedSlideTitle);
+slideEditorDescription.addEventListener('change',saveSelectedSlideDescription);
+slideEditorColor.addEventListener('input',recolorSelectedSlide);
+document.getElementById('addSlideButton').addEventListener('click',()=>{
+  const nextCount=REGULAR_FACE_COUNTS.find(count=>count>slideMetadata.length);
+  if(!nextCount){
+    slideEditorStatus.textContent = slideEditorLabels[currentLanguage].noSpace;
+    return;
+  }
+  for(let index=slideMetadata.length;index<nextCount;index++){
+    slideMetadata.push({
+      title:'',
+      description:'',
+      color:faceColors[index % faceColors.length],
+      image:'',
+      images:[],
+      metadata:[]
+    });
+  }
+  selectedEditorSlide=nextCount-1;
+  finishSlideDeckChange();
+  slideEditorStatus.textContent = slideEditorLabels[currentLanguage].added;
+});
+document.getElementById('deleteSlideButton').addEventListener('click',()=>{
+  const previousCount=REGULAR_FACE_COUNTS.filter(count=>count<slideMetadata.length).at(-1);
+  if(!previousCount){
+    slideEditorStatus.textContent = slideEditorLabels[currentLanguage].minimum;
+    return;
+  }
+  const removedCount=slideMetadata.length-previousCount;
+  const message=slideEditorLabels[currentLanguage].confirmReduce
+    .replace('{count}',String(previousCount))
+    .replace('{removed}',String(removedCount));
+  if(!window.confirm(message)) return;
+  slideMetadata.splice(previousCount);
+  selectedEditorSlide = Math.min(selectedEditorSlide,slideMetadata.length-1);
+  finishSlideDeckChange();
+  slideEditorStatus.textContent = slideEditorLabels[currentLanguage].removed;
+});
+document.getElementById('removeSelectedSlideButton').addEventListener('click',()=>{
+  const slide=slideMetadata[selectedEditorSlide];
+  if(!slide) return;
+  if(!window.confirm(slideEditorLabels[currentLanguage].confirmRemoveSlide)) return;
+  const removedImages=getSlideImages(slide);
+  slide.title='';
+  slide.description='';
+  setSlideImages(slide,[]);
+  slide.metadata=[];
+  if(currentSlideIndex===selectedEditorSlide) updateSlidePhotoDisplay();
+  refreshSlideMarkers();
+  translatedSlideCopies.delete(`fr:${selectedEditorSlide}`);
+  translatedSlideCopies.delete(`en:${selectedEditorSlide}`);
+  removedImages.forEach(image=>{
+    if(!slideMetadata.some(otherSlide=>getSlideImages(otherSlide).includes(image))){
+      upscaledPhotoSources.delete(image);
+      upscaledPhotoTargets.delete(image);
+    }
+  });
+  updateCubeFaceTitles();
+  renderSlideEditor();
+  slideEditorStatus.textContent=slideEditorLabels[currentLanguage].slideRemoved;
+});
+document.getElementById('closeSlideEditorButton').addEventListener('click',()=>slideEditorDialog.close());
+document.getElementById('removeSlidePhotoButton').addEventListener('click',()=>{
+  const slide=slideMetadata[selectedEditorSlide];
+  if(!slide) return;
+  getSlideImages(slide).forEach(image=>{
+    if(!slideMetadata.some(otherSlide=>otherSlide!==slide && getSlideImages(otherSlide).includes(image))){
+      upscaledPhotoSources.delete(image);
+      upscaledPhotoTargets.delete(image);
+    }
+  });
+  setSlideImages(slide,[]);
+  slideEditorImage.value = '';
+  if(currentSlideIndex===selectedEditorSlide) updateSlidePhotoDisplay();
+  slideEditorStatus.textContent = slideEditorLabels[currentLanguage].photoRemoved;
+});
+document.getElementById('exportSlidesButton').addEventListener('click',()=>{
+  const deck = {
+    format:'interactive-cube-presentation',
+    version:1,
+    slides:slideMetadata.map(slide=>({
+      title:slide.title,
+      description:slide.description,
+      color:`#${new THREE.Color(slide.color).getHexString()}`,
+      image:slide.image,
+      images:getSlideImages(slide),
+      metadata:[...slide.metadata]
+    }))
+  };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(deck,null,2)],{type:'application/json'}));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'cube-slides.json';
+  link.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  slideEditorStatus.textContent = slideEditorLabels[currentLanguage].saved;
+});
+document.getElementById('importSlidesButton').addEventListener('click',()=>{
+  document.getElementById('importSlidesFile').click();
+});
+document.getElementById('importSlidesFile').addEventListener('change',event=>{
+  const input = event.currentTarget;
+  const file = input.files?.[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onerror = ()=>{
+    slideEditorStatus.textContent = slideEditorLabels[currentLanguage].readError;
+    console.error('Unable to read slide deck file:',reader.error);
+  };
+  reader.onload = ()=>{
+    try{
+      const deck = JSON.parse(String(reader.result));
+      if(deck?.format !== 'interactive-cube-presentation' || deck.version !== 1 ||
+         !Array.isArray(deck.slides) || !REGULAR_FACE_COUNTS.includes(deck.slides.length)){
+        throw new Error('Deck format or slide count is unsupported');
+      }
+      const importedSlides = deck.slides.map(slide=>{
+        const validColor = typeof slide.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(slide.color);
+        const images=Array.isArray(slide.images)?slide.images:
+          (typeof slide.image==='string' && slide.image?[slide.image]:[]);
+        const validMetadata = Array.isArray(slide.metadata) && slide.metadata.every(value=>typeof value === 'string' && value.length <= 80);
+        if(typeof slide.title !== 'string' || slide.title.length > 240 ||
+           typeof slide.description !== 'string' || slide.description.length > 5000 ||
+           !validColor || !validMetadata){
+          throw new Error('Deck contains an invalid slide');
+        }
+        return {
+          title:slide.title,
+          description:slide.description,
+          color:Number.parseInt(slide.color.slice(1),16),
+          image:images[0] || '',
+          images,
+          metadata:[...new Set(slide.metadata)]
+        };
+      });
+      slideMetadata.splice(0,slideMetadata.length,...importedSlides);
+      upscaledPhotoSources.clear();
+      upscaledPhotoTargets.clear();
+      selectedEditorSlide = 0;
+      finishSlideDeckChange();
+      slideEditorStatus.textContent = slideEditorLabels[currentLanguage].loaded;
+    } catch(error){
+      slideEditorStatus.textContent = slideEditorLabels[currentLanguage].badDeck;
+      console.error('Unable to import slide deck:',error);
+    } finally {
+      input.value = '';
+    }
+  };
+  reader.readAsText(file);
+});
+slideEditorImage.addEventListener('change',async()=>{
+  const files=[...(slideEditorImage.files || [])];
+  if(!files.length) return;
+  const fileToDataUrl=file=>new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onerror=()=>reject(reader.error || new Error(`Unable to read ${file.name}`));
+    reader.onload=()=>{
+      if(typeof reader.result!=='string'){
+        reject(new Error(`Unable to read ${file.name}`));
+        return;
+      }
+      resolve(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+  try{
+    const filesWithData=await Promise.all(files.map(async file=>({
+      file,
+      dataUrl:await fileToDataUrl(file),
+      match:file.name.match(/^slide-(\d+)(?:-(.+))?\.(?:jpe?g|png|webp|mp4|m4v|webm|ogv|ogg|glb|gltf)$/i)
+    })));
+    const groupedFiles=new Map();
+    filesWithData.forEach(item=>{
+      const targetIndex=item.match?Number(item.match[1])-1:selectedEditorSlide;
+      if(targetIndex<0 || targetIndex>=slideMetadata.length){
+        console.warn(`Ignoring media with out-of-range slide number: ${item.file.name}`);
+        return;
+      }
+      const group=groupedFiles.get(targetIndex) || [];
+      group.push(item);
+      groupedFiles.set(targetIndex,group);
+    });
+    groupedFiles.forEach((group,index)=>{
+      const images=getSlideImages(slideMetadata[index]);
+      group.sort((a,b)=>a.file.name.localeCompare(b.file.name,undefined,{numeric:true}));
+      const newMedia=group.map(item=>item.dataUrl); setSlideImages(slideMetadata[index],[...new Set([...images,...newMedia])]);
+    });
+    if(currentSlideIndex!==null) updateSlidePhotoDisplay();
+    slideEditorStatus.textContent=slideEditorLabels[currentLanguage].photoAdded;
+  }catch(error){
+    slideEditorStatus.textContent=slideEditorLabels[currentLanguage].readError;
+    console.error('Unable to read media files:',error);
+  }finally{
+    slideEditorImage.value='';
+  }
+});
+
+function getPhotoTargetSize(width,height){
+  const scale = Math.max(1,Math.min(1920/width,1080/height));
+  return {
+    width:Math.max(width,Math.round(width*scale)),
+    height:Math.max(height,Math.round(height*scale))
+  };
+}
+
+async function upscalePhoto(imageUrl){
+  const image = new Image();
+  const imageLoaded = new Promise((resolve,reject)=>{
+    image.onload = resolve;
+    image.onerror = ()=>reject(new Error(`Could not load slide photo ${imageUrl}`));
+  });
+  image.src = imageUrl;
+  if(!image.complete) await imageLoaded;
+  if(!image.naturalWidth || !image.naturalHeight) throw new Error(`Slide photo has invalid dimensions: ${imageUrl}`);
+  const targetSize = getPhotoTargetSize(image.naturalWidth,image.naturalHeight);
+  const targetKey = `${targetSize.width}x${targetSize.height}`;
+  if(upscaledPhotoTargets.get(imageUrl) === targetKey && upscaledPhotoSources.has(imageUrl)){
+    return upscaledPhotoSources.get(imageUrl);
+  }
+  const finalWidth = targetSize.width;
+  const finalHeight = targetSize.height;
+  const targetScale = Math.max(finalWidth/image.naturalWidth,finalHeight/image.naturalHeight);
+  if(targetScale <= 1){
+    upscaledPhotoTargets.set(imageUrl,targetKey);
+    return imageUrl;
+  }
+  let width = image.naturalWidth;
+  let height = image.naturalHeight;
+  let source = image;
+  while(width < finalWidth || height < finalHeight){
+    const nextWidth = Math.min(finalWidth,Math.round(width*1.5));
+    const nextHeight = Math.min(finalHeight,Math.round(height*1.5));
+    if(nextWidth <= width || nextHeight <= height) break;
+    const canvas = document.createElement('canvas');
+    canvas.width = nextWidth;
+    canvas.height = nextHeight;
+    const context = canvas.getContext('2d');
+    if(!context) throw new Error('Could not create image upscaling canvas');
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(source,0,0,nextWidth,nextHeight);
+    source = canvas;
+    width = nextWidth;
+    height = nextHeight;
+    await new Promise(resolve=>setTimeout(resolve,0));
+  }
+  if(source === image) return imageUrl;
+  const output = document.createElement('canvas');
+  output.width = finalWidth;
+  output.height = finalHeight;
+  const context = output.getContext('2d',{willReadFrequently:true});
+  if(!context) throw new Error('Could not create final upscaled image canvas');
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(source,0,0,finalWidth,finalHeight);
+
+  const blurred = document.createElement('canvas');
+  blurred.width = finalWidth;
+  blurred.height = finalHeight;
+  const blurContext = blurred.getContext('2d');
+  if(!blurContext) throw new Error('Could not create image sharpening canvas');
+  blurContext.filter = 'blur(1px)';
+  blurContext.drawImage(output,0,0);
+  const originalPixels = context.getImageData(0,0,finalWidth,finalHeight);
+  const blurredPixels = blurContext.getImageData(0,0,finalWidth,finalHeight);
+  for(let i=0;i<originalPixels.data.length;i+=4){
+    for(let channel=0;channel<3;channel++){
+      const sharpened = originalPixels.data[i+channel] + (originalPixels.data[i+channel]-blurredPixels.data[i+channel])*1.15;
+      originalPixels.data[i+channel] = Math.max(0,Math.min(255,sharpened));
+    }
+  }
+  context.putImageData(originalPixels,0,0);
+  const preparedSource = output.toDataURL('image/jpeg',0.97);
+  upscaledPhotoTargets.set(imageUrl,targetKey);
+  return preparedSource;
+}
+
+function modelExists(url){
+  return new Promise(resolve => {
+    fetch(url, {method: 'HEAD', mode: 'cors'})
+      .then(r => resolve(r.ok))
+      .catch(() => resolve(false));
+  });
+}
+
+function imageExists(imageUrl){
+  return new Promise(resolve=>{
+    const image = new Image();
+    image.onload = ()=>resolve(image.naturalWidth > 0 && image.naturalHeight > 0);
+    image.onerror = ()=>resolve(false);
+    image.src = imageUrl;
+  });
+}
+
+function videoExists(videoUrl){
+  const extension=videoUrl.split(/[?#]/,1)[0].split('.').pop()?.toLowerCase();
+  const mimeType={
+    mp4:'video/mp4',m4v:'video/mp4',webm:'video/webm',
+    ogv:'video/ogg',ogg:'video/ogg',mov:'video/quicktime'
+  }[extension || ''];
+  if(!mimeType) return Promise.resolve(false);
+  const probe=document.createElement('video');
+  if(!probe.canPlayType(mimeType)) return Promise.resolve(false);
+  return new Promise(resolve=>{
+    let settled=false;
+    const finish=exists=>{
+      if(settled) return;
+      settled=true;
+      clearTimeout(timeout);
+      probe.removeAttribute('src');
+      probe.load();
+      resolve(exists);
+    };
+    const timeout=setTimeout(()=>finish(false),1200);
+    probe.addEventListener('loadedmetadata',()=>finish(true),{once:true});
+    probe.addEventListener('error',()=>finish(false),{once:true});
+    probe.preload='metadata';
+    probe.src=videoUrl;
+    probe.load();
+  });
+}
+
+async function detectSlideImages(){
+  startupStatus.textContent = uiText[currentLanguage].detectingImages;
+
+  for(let index=0;index<slideMetadata.length;index++){
+    const slideNumber=index+1;
+    const images=[];
+    const baseNames = [`slide-${slideNumber}`];
+    for(let i=1; i<=10; i++){
+      baseNames.push(`slide-${slideNumber}-${i}`);
+    }
+
+    for(const name of baseNames){
+      for(const ext of ['glb', 'gltf', 'png', 'jpg', 'webp', 'mp4', 'webm']){
+        const candidate = `./assets/${name}.${ext}`;
+        try {
+          const exists = ['glb', 'gltf'].includes(ext) 
+            ? await modelExists(candidate)
+            : await imageExists(candidate) || await videoExists(candidate);
+          
+          if(exists && !images.includes(candidate)){
+            images.push(candidate);
+          }
+        } catch(e) {}
+      }
+    }
+
+    images.sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
+    setSlideImages(slideMetadata[index], images);
+  }
+}
+
+async function preparePhotoSources(updateProgress){
+  const generation = ++photoPreparationGeneration;
+  const uniqueImages=[...new Set(slideMetadata.flatMap(getSlideImages).filter(source=>!isVideoSource(source) && !isModelSource(source)))];
+  const errors = [];
+  for(let i=0;i<uniqueImages.length;i++){
+    const imageUrl = uniqueImages[i];
+    try{
+      const source = await upscalePhoto(imageUrl);
+      if(generation !== photoPreparationGeneration) return [];
+      upscaledPhotoSources.set(imageUrl,source);
+    } catch(error){
+      if(generation !== photoPreparationGeneration) return [];
+      errors.push(imageUrl);
+      console.error(`Unable to prepare slide photo ${imageUrl}:`,error);
+    }
+    if(updateProgress){
+      startupProgress.value = Math.round((i+1)/uniqueImages.length*100);
+      startupStatus.textContent = `${uiText[currentLanguage].loading} ${i+1}/${uniqueImages.length}`;
+    }
+  }
+  if(generation !== photoPreparationGeneration) return [];
+  if(currentSlideIndex!==null) updateSlidePhotoDisplay();
+  return errors;
+}
+
+async function preparePresentation(){
+  await detectSlideImages();
+  const errors = await preparePhotoSources(true);
+  startupLoadFailed = errors.length > 0;
+  if(errors.length){
+    startupStatus.textContent = uiText[currentLanguage].loadError;
+  } else {
+    startupStatus.textContent = uiText[currentLanguage].ready;
+  }
+  startPresentationButton.disabled = false;
+  startPresentationButton.textContent = uiText[currentLanguage].start;
+}
+
+applyLanguage(currentLanguage);
+preparePresentation();
+
+function explodeCube(){
+  if(isShattered || isResetting || cube.userData.animating) return;
+  isShattered = true;
+  if(shatterButton) shatterButton.disabled = true;
+  cube.userData.animating = true;
+  gsap.killTweensOf(cube.rotation);
+  cube.updateMatrixWorld(true);
+  explosionGroup = new THREE.Group();
+  scene.add(explosionGroup);
+  faceMeshes.forEach((face,index)=>{
+    const worldRotation = new THREE.Quaternion();
+    const worldScale=new THREE.Vector3();
+    const worldPosition=face.geometry.userData.faceCenter.clone();
+    face.matrixWorld.decompose(worldPosition,worldRotation,worldScale);
+    const center = face.geometry.userData.faceCenter.clone();
+    const geometry = face.geometry.clone();
+    geometry.translate(-center.x,-center.y,-center.z);
+    const material = face.material.clone();
+    material.map = fragmentFillTexture;
+    material.color.copy(faceGradientMaterials[index].userData.gradientColor);
+    material.transparent = true;
+    const piece = new THREE.Mesh(geometry,material);
+    piece.position.copy(center).applyMatrix4(face.matrixWorld);
+    piece.quaternion.copy(worldRotation);
+    piece.scale.copy(worldScale);
+    piece.renderOrder = face.renderOrder+1;
+    const titleSource = faceTitleMeshes[index];
+    const titleGeometry = titleSource.geometry.clone();
+    titleGeometry.translate(-center.x,-center.y,-center.z);
+    const titleMaterial = titleSource.material.clone();
+    const titlePiece = new THREE.Mesh(titleGeometry,titleMaterial);
+    titlePiece.renderOrder = piece.renderOrder+1;
+    piece.add(titlePiece);
+    explosionGroup.add(piece);
+    const direction = piece.position.clone().normalize();
+    direction.add(new THREE.Vector3((Math.random()-0.5)*0.7,(Math.random()-0.5)*0.7,(Math.random()-0.5)*0.7)).normalize();
+    const distance = 1.0+Math.random()*0.6;
+    gsap.to(piece.position,{
+      x:piece.position.x+direction.x*distance,
+      y:piece.position.y+direction.y*distance,
+      z:piece.position.z+direction.z*distance,
+      duration:1.4,delay:Math.random()*0.18,ease:'power3.out'
+    });
+    gsap.to(piece.rotation,{
+      x:(Math.random()-0.5)*5,y:(Math.random()-0.5)*5,z:(Math.random()-0.5)*5,
+      duration:1.4,delay:Math.random()*0.18,ease:'power2.out'
+    });
+    gsap.to(material,{opacity:0,duration:1,delay:3.2,ease:'power1.in'});
+    gsap.to(titleMaterial,{opacity:0,duration:1,delay:3.2,ease:'power1.in'});
+    face.visible=false;
+  });
+  faceTitleMeshes.forEach(mesh=>{mesh.visible=false;});
+  gsap.to(cube.scale, {x:1.06, y:1.06, z:1.06, duration:0.35, yoyo:true, repeat:1, ease:'power2.out'});
+  gsap.to(liquidMaterial.uniforms.uOpacity, {value:0, duration:0.7, ease:'power2.in'});
+  gsap.to(fluidBarMaterial, {opacity:0, duration:0.55, ease:'power2.in'});
+  gsap.to(glowMaterial, {opacity:0.42, duration:0.12, yoyo:true, repeat:1, onComplete:()=>{glowMaterial.opacity=0;}});
+  gsap.to(cube.rotation, {x:'+='+Math.PI*0.45, y:'+='+Math.PI*0.6, duration:1.15, ease:'power2.out'});
+  rumbleState.value = 1;
+  gsap.to(rumbleState, {value:0, duration:1.25, ease:'power2.out'});
+  shatterCompleteCall = gsap.delayedCall(4.3, ()=>{
+    cube.userData.animating=false;
+    shatterCompleteCall = null;
+  });
+}
+
+function resetCube(){
+  if(resetTimeline) resetTimeline.kill();
+  isResetting=true;
+  cube.userData.animating=true;
+  if(shatterButton) shatterButton.disabled=true;
+  if(shatterCompleteCall){
+    shatterCompleteCall.kill();
+    shatterCompleteCall = null;
+  }
+  gsap.killTweensOf(cube.rotation);
+  gsap.killTweensOf(cube.scale);
+  gsap.killTweensOf(rumbleState);
+  gsap.killTweensOf(liquidMaterial.uniforms.uOpacity);
+  gsap.killTweensOf(fluidBarMaterial);
+  gsap.killTweensOf(glowMaterial);
+  if(explosionGroup){
+    explosionGroup.children.forEach(piece=>{
+      piece.traverse(fragment=>{
+        if(!(fragment instanceof THREE.Mesh)) return;
+        gsap.killTweensOf(fragment.position);
+        gsap.killTweensOf(fragment.rotation);
+        gsap.killTweensOf(fragment.scale);
+        gsap.killTweensOf(fragment.material);
+        fragment.geometry.dispose();
+        fragment.material.dispose();
+      });
+    });
+    scene.remove(explosionGroup);
+    explosionGroup = null;
+  }
+  faceMeshes.forEach(mesh=>{
+    gsap.killTweensOf(mesh.material);
+    mesh.visible=true;
+    mesh.position.copy(mesh.userData.originalPosition);
+    mesh.scale.copy(mesh.userData.originalScale);
+    mesh.material.transparent=true;
+    mesh.material.opacity=0;
+  });
+  faceTitleMeshes.forEach(mesh=>{mesh.visible=true;});
+  cube.rotation.copy(_cubeOriginalRotation);
+  rumbleState.value = 0;
+  resetTimeline=gsap.timeline({
+    onComplete:()=>{
+      isShattered=false;
+      isResetting=false;
+      cube.userData.animating=false;
+      if(shatterButton) shatterButton.disabled=false;
+      resetTimeline=null;
+    }
+  });
+  resetTimeline
+    .to(cube.scale,{
+      x:_cubeOriginalScale.x,y:_cubeOriginalScale.y,z:_cubeOriginalScale.z,
+      duration:0.8,ease:'power2.out'
+    },0)
+    .to(liquidMaterial.uniforms.uOpacity,{value:_liquidOriginalOpacity,duration:0.75,ease:'power2.out'},0)
+    .to(fluidBarMaterial,{opacity:_fluidBarOriginalOpacity,duration:0.75,ease:'power2.out'},0)
+    .to(glowMaterial,{opacity:_glowOriginalOpacity,duration:0.6,ease:'power2.out'},0)
+    .to(camera.position,{x:cameraHome.x,y:cameraHome.y,z:cameraHome.z,duration:0.5,ease:'power2.out'},0)
+    .to(faceMeshes.map(mesh=>mesh.material),{opacity:1,duration:0.6,ease:'power2.out'},0);
+}
+
+function centroidFromLandmarks(landmarks){
+  let x=0,y=0;
+  landmarks.forEach(point=>{x+=point.x; y+=point.y;});
+  return {x:x/landmarks.length,y:y/landmarks.length};
+}
+
+const handConnections = [
+  [0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],
+  [9,13],[13,14],[14,15],[15,16],[13,17],[0,17],[17,18],[18,19],[19,20]
+];
+
+function drawHandOverlay(landmarks){
+  if(handCanvas.style.display === 'none') return;
+  const width = video.videoWidth;
+  const height = video.videoHeight;
+  if(!width || !height) return;
+  if(handCanvas.width !== width || handCanvas.height !== height){
+    handCanvas.width = width;
+    handCanvas.height = height;
+  }
+  handCtx.clearRect(0,0,width,height);
+  handCtx.lineWidth = Math.max(2,width/240);
+  handCtx.strokeStyle = '#00FFAA';
+  handCtx.fillStyle = '#ff0066';
+  landmarks.forEach(hand=>{
+    handCtx.beginPath();
+    handConnections.forEach(([start,end])=>{
+      handCtx.moveTo(hand[start].x*width,hand[start].y*height);
+      handCtx.lineTo(hand[end].x*width,hand[end].y*height);
+    });
+    handCtx.stroke();
+    hand.forEach(point=>{
+      handCtx.beginPath();
+      handCtx.arc(point.x*width,point.y*height,Math.max(2,width/160),0,Math.PI*2);
+      handCtx.fill();
+    });
+  });
+}
+
+function setHandCursorTarget(target){
+  if(handCursorTarget === target) return;
+  if(handCursorTarget) handCursorTarget.classList.remove('hand-ui-hover');
+  handCursorTarget = target;
+  if(handCursorTarget) handCursorTarget.classList.add('hand-ui-hover');
+}
+
+function activateHandUiTarget(target){
+  if(!target || target.matches(':disabled,[aria-disabled="true"]')) return false;
+  if(target instanceof HTMLSelectElement){
+    if(target.options.length < 2) return false;
+    target.selectedIndex = (target.selectedIndex + 1) % target.options.length;
+    target.dispatchEvent(new Event('input',{bubbles:true}));
+    target.dispatchEvent(new Event('change',{bubbles:true}));
+    return true;
+  }
+  if(target instanceof HTMLElement){
+    target.focus({preventScroll:true});
+    target.click();
+    return true;
+  }
+  return false;
+}
+
+function activateHandCursorTarget(){
+  if(handCursorTarget) return activateHandUiTarget(handCursorTarget);
+  if(overlay.style.display === 'flex' || startupScreen.style.display !== 'none') return false;
+  mouse.x = handCursorPosition.x/window.innerWidth*2-1;
+  mouse.y = -(handCursorPosition.y/window.innerHeight)*2+1;
+  raycaster.setFromCamera(mouse,camera);
+  const intersects = raycaster.intersectObjects(faceMeshes,false);
+  if(!intersects.length) return false;
+  openFace(intersects[0].object.userData.index);
+  return true;
+}
+
+function handleHandLandmarks(landmarks){
+  drawHandOverlay(landmarks);
+  if(landmarks.length){
+    const firstHand = landmarks[0];
+    const cursorTargetX = THREE.MathUtils.clamp((1-firstHand[8].x)*window.innerWidth,0,window.innerWidth-1);
+    const cursorTargetY = THREE.MathUtils.clamp(firstHand[8].y*window.innerHeight,0,window.innerHeight-1);
+    if(handCursorPosition){
+      handCursorPosition.x = THREE.MathUtils.lerp(handCursorPosition.x,cursorTargetX,0.38);
+      handCursorPosition.y = THREE.MathUtils.lerp(handCursorPosition.y,cursorTargetY,0.38);
+    } else {
+      handCursorPosition = {x:cursorTargetX,y:cursorTargetY};
+    }
+    handCursor.style.display = 'block';
+    handCursor.style.left = `${handCursorPosition.x}px`;
+    handCursor.style.top = `${handCursorPosition.y}px`;
+    const elementAtCursor = document.elementFromPoint(handCursorPosition.x,handCursorPosition.y);
+    const target = elementAtCursor?.closest('button,a,input:not([type="hidden"]),select,[role="button"]') || null;
+    setHandCursorTarget(target instanceof HTMLElement && !target.matches(':disabled,[aria-disabled="true"]') ? target : null);
+
+    const pinchDistance = Math.hypot(firstHand[4].x-firstHand[8].x,firstHand[4].y-firstHand[8].y);
+    if(pinchDistance < 0.06){
+      if(!handPinchActive){
+        handPinchActive = true;
+        handPinchOnUi = activateHandCursorTarget();
+        handCursor.classList.add('pinch');
+      }
+    } else if(pinchDistance > 0.09){
+      handPinchActive = false;
+      handPinchOnUi = false;
+      handCursor.classList.remove('pinch');
+    }
+
+    if(!cube.userData.animating && overlay.style.display !== 'flex'){
+      const centers = landmarks.map(lm=>centroidFromLandmarks(lm));
+      const center = centers.reduce((sum, point)=>({x:sum.x+point.x/centers.length,y:sum.y+point.y/centers.length}),{x:0,y:0});
+      if(previousHandCenter){
+        const smoothedX = THREE.MathUtils.lerp(previousHandCenter.x,center.x,0.42);
+        const smoothedY = THREE.MathUtils.lerp(previousHandCenter.y,center.y,0.42);
+        handRotationTarget.y += (smoothedX-previousHandCenter.x)*window.innerWidth*SMOOTH_ALPHA*0.012;
+        handRotationTarget.x += (smoothedY-previousHandCenter.y)*window.innerHeight*SMOOTH_ALPHA*0.012;
+        previousHandCenter = {x:smoothedX,y:smoothedY};
+      } else {
+        previousHandCenter = center;
+      }
+      hasHandControlInput = true;
+
+      if(pinchDistance < 0.075 && !handPinchOnUi){
+        if(!pinchZoomStart) pinchZoomStart = {distance:pinchDistance, cameraZ:handZoomTarget};
+        handZoomTarget = THREE.MathUtils.clamp(pinchZoomStart.cameraZ-(pinchDistance-pinchZoomStart.distance)*24,4.8,12);
+      } else pinchZoomStart = null;
+
+      if(landmarks.length > 1){
+        const handDistance = Math.hypot(centers[0].x-centers[1].x, centers[0].y-centers[1].y);
+        if(dualHandStartDistance === null){
+          dualHandStartDistance = Math.max(handDistance,0.01);
+          dualHandStartScale = handScaleTarget;
+        }
+        handScaleTarget = THREE.MathUtils.clamp(dualHandStartScale*handDistance/dualHandStartDistance,0.55,1.5);
+      } else dualHandStartDistance = null;
+    } else {
+      previousHandCenter = null;
+      pinchZoomStart = null;
+      dualHandStartDistance = null;
+      handRotationTarget.set(cube.rotation.x,cube.rotation.y);
+      handScaleTarget = cube.scale.x;
+      handZoomTarget = camera.position.z;
+      hasHandControlInput = false;
+    }
+  } else {
+    handCursor.style.display = 'none';
+    handCursor.classList.remove('pinch');
+    setHandCursorTarget(null);
+    handCursorPosition = null;
+    handPinchActive = false;
+    handPinchOnUi = false;
+    previousHandCenter = null;
+    pinchZoomStart = null;
+    dualHandStartDistance = null;
+    handRotationTarget.set(cube.rotation.x,cube.rotation.y);
+    handScaleTarget = cube.scale.x;
+    handZoomTarget = camera.position.z;
+    hasHandControlInput = false;
+  }
+}
+
+async function startHandTracking(){
+  if(handTrackingEnabled) return;
+  handTrackingEnabled = true;
+  const generation = ++handTrackingGeneration;
+  handTrackingState='starting-camera';
+  updateHandTrackingControls(uiText[currentLanguage].handStarting);
+  try{
+    if(!navigator.mediaDevices?.getUserMedia){
+      throw new Error('Camera access is unavailable in this browser context');
+    }
+    const cameraRequest=navigator.mediaDevices.getUserMedia({
+      video:{
+        width:{ideal:320},
+        height:{ideal:240},
+        frameRate:{ideal:60,max:60}
+      },
+      audio:false
+    });
+    cameraRequest.then(stream=>{
+      if(generation!==handTrackingGeneration || !handTrackingEnabled){
+        stream.getTracks().forEach(track=>track.stop());
+      }
+    }).catch(error=>{
+      console.warn('Camera request completed with an error:',error.name || error.message);
+    });
+    const stream=await withTimeout(
+      cameraRequest,
+      HAND_CAMERA_TIMEOUT_MS,
+      uiText[currentLanguage].handStartingTimeout
+    );
+    if(generation !== handTrackingGeneration || !handTrackingEnabled){
+      stream.getTracks().forEach(track=>track.stop());
+      return;
+    }
+    handTrackingStream = stream;
+    video.srcObject = stream;
+    handTrackingState='loading-model';
+    updateHandTrackingControls(uiText[currentLanguage].handLoading);
+    await withTimeout(video.play(),HAND_CAMERA_TIMEOUT_MS,'Camera preview did not start');
+    const workerSource = `
+      let landmarker;
+      const wasmRoot = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm';
+      const modelUrl = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+      self.onmessage = async ({data}) => {
+        if(data.type === 'init'){
+          try{
+            const {FilesetResolver,HandLandmarker} = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/vision_bundle.mjs');
+            const vision = await FilesetResolver.forVisionTasks(wasmRoot);
+            const options = {
+              baseOptions:{modelAssetPath:modelUrl,delegate:'CPU'},
+              runningMode:'VIDEO',
+              numHands:2,
+              minHandDetectionConfidence:0.55,
+              minHandPresenceConfidence:0.5,
+              minTrackingConfidence:0.5
+            };
+            landmarker = await HandLandmarker.createFromOptions(vision,options);
+            self.postMessage({type:'ready',delegate:'CPU'});
+          } catch(error){
+            self.postMessage({type:'error',message:error.message || String(error),stack:error.stack || ''});
+          }
+        } else if(data.type === 'frame'){
+          const {bitmap,timestamp} = data;
+          try{
+            const result = landmarker.detectForVideo(bitmap,timestamp);
+            const landmarks = result.landmarks.map(hand=>hand.map(point=>({x:point.x,y:point.y,z:point.z})));
+            self.postMessage({type:'result',landmarks});
+          } catch(error){
+            self.postMessage({type:'error',message:error.message || String(error),stack:error.stack || ''});
+          } finally{
+            bitmap.close();
+          }
+        } else if(data.type === 'close'){
+          if(landmarker) landmarker.close();
+          self.close();
+        }
+      };
+    `;
+    handWorkerUrl = URL.createObjectURL(new Blob([workerSource],{type:'text/javascript'}));
+    handWorker = new Worker(handWorkerUrl);
+    handWorkerReady = false;
+    handFrameInFlight = false;
+    if(handUiHintElement) handUiHintElement.style.display = 'none';
+    lastVideoFrameTime = -1;
+    handWorker.onmessage = ({data})=>{
+      if(generation !== handTrackingGeneration || !handTrackingEnabled) return;
+      if(data.type === 'ready'){
+        handWorkerReady = true;
+        if(handTrackingStartupTimeout){
+          clearTimeout(handTrackingStartupTimeout);
+          handTrackingStartupTimeout=null;
+        }
+        if(handUiHintElement) handUiHintElement.style.display = 'inline';
+        handTrackingState='active';
+        updateHandTrackingControls();
+        if(handTrackingButton) handTrackingButton.title = 'Hand tracking running on '+data.delegate;
+        pumpHandFrames(generation);
+      } else if(data.type === 'result'){
+        handFrameInFlight = false;
+        handleHandLandmarks(data.landmarks);
+      } else if(data.type === 'error'){
+        console.error('Hand tracking worker failed:',data.message,data.stack);
+        failHandTracking(new Error(data.message || 'Hand tracking worker failed'),generation);
+      }
+    };
+    handWorker.onerror = event=>{
+      console.error('Hand tracking worker crashed:',event.message);
+      failHandTracking(new Error(event.message || 'Hand tracking worker crashed'),generation);
+    };
+    handWorker.postMessage({type:'init'});
+    handTrackingStartupTimeout=setTimeout(()=>{
+      failHandTracking(new Error(uiText[currentLanguage].handLoadingTimeout),generation);
+    },HAND_TRACKER_TIMEOUT_MS);
+  } catch(error){
+    if(generation !== handTrackingGeneration) return;
+    failHandTracking(error,generation);
+  }
+}
+
+function failHandTracking(error,generation){
+  if(generation!==handTrackingGeneration || !handTrackingEnabled) return;
+  console.error('Hand tracking could not start:',error);
+  stopHandTracking(true);
+  updateHandTrackingControls(uiText[currentLanguage].handFailed);
+}
+
+function pumpHandFrames(generation){
+  if(!handTrackingEnabled || !handWorkerReady || generation !== handTrackingGeneration) return;
+  const next = ()=>{
+    if(!handTrackingEnabled || !handWorkerReady || generation !== handTrackingGeneration) return;
+    if(video.readyState >= 2 &&
+       document.visibilityState === 'visible' &&
+       !handFrameInFlight &&
+       video.currentTime !== lastVideoFrameTime){
+      handFrameInFlight = true;
+      lastVideoFrameTime = video.currentTime;
+      createImageBitmap(video).then(bitmap=>{
+        if(!handTrackingEnabled || generation !== handTrackingGeneration || !handWorker){
+          bitmap.close();
+          handFrameInFlight = false;
+          return;
+        }
+        handWorker.postMessage({type:'frame',bitmap,timestamp:performance.now()},[bitmap]);
+      }).catch(error=>{
+        handFrameInFlight = false;
+        console.error('Unable to prepare hand tracking frame:',error);
+      });
+    }
+    if(video.requestVideoFrameCallback){
+      video.requestVideoFrameCallback(next);
+    } else {
+      requestAnimationFrame(next);
+    }
+  };
+  if(video.requestVideoFrameCallback) video.requestVideoFrameCallback(next);
+  else requestAnimationFrame(next);
+}
+
+function stopHandTracking(preserveFailure=false){
+  handTrackingEnabled = false;
+  handTrackingGeneration++;
+  if(handTrackingStartupTimeout){
+    clearTimeout(handTrackingStartupTimeout);
+    handTrackingStartupTimeout=null;
+  }
+  if(handTrackingStream){
+    handTrackingStream.getTracks().forEach(track=>track.stop());
+    handTrackingStream = null;
+  }
+  if(handWorker){
+    handWorker.postMessage({type:'close'});
+    handWorker.terminate();
+    handWorker = null;
+  }
+  if(handWorkerUrl){
+    URL.revokeObjectURL(handWorkerUrl);
+    handWorkerUrl = null;
+  }
+  handWorkerReady = false;
+  handFrameInFlight = false;
+  if(handUiHintElement) handUiHintElement.style.display = 'none';
+  lastVideoFrameTime = -1;
+  video.pause();
+  video.srcObject = null;
+  handCtx.clearRect(0,0,handCanvas.width,handCanvas.height);
+  handCursor.style.display = 'none';
+  handCursor.classList.remove('pinch');
+  setHandCursorTarget(null);
+  handCursorPosition = null;
+  handPinchActive = false;
+  handPinchOnUi = false;
+  previousHandCenter = null;
+  pinchZoomStart = null;
+  dualHandStartDistance = null;
+  handRotationTarget.set(cube.rotation.x,cube.rotation.y);
+  handScaleTarget = cube.scale.x;
+  handZoomTarget = camera.position.z;
+  hasHandControlInput = false;
+  handTrackingState=preserveFailure?'failed':'off';
+  if(preserveFailure) updateHandTrackingControls(uiText[currentLanguage].handFailed);
+  else updateHandTrackingControls();
+}
+
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let suppressCanvasClick = false;
+let suppressCanvasClickTimer = null;
+
+function openFaceAtPointer(clientX,clientY){
+  const canvasRect=renderer.domElement.getBoundingClientRect();
+  const localX=clientX-canvasRect.left;
+  const localY=clientY-canvasRect.top;
+  let pickCamera=camera;
+  if(stereoMode==='off'){
+    mouse.x=(localX/canvasRect.width)*2-1;
+    mouse.y=-(localY/canvasRect.height)*2+1;
+  } else {
+    camera.aspect=canvasRect.width/canvasRect.height;
+    camera.updateProjectionMatrix();
+    stereoCamera.aspect=stereoMode==='side-by-side'?0.5:2;
+    stereoCamera.update(camera);
+    if(stereoMode==='side-by-side'){
+      const halfWidth=canvasRect.width/2;
+      const isRightEye=localX>=halfWidth;
+      const eyeLeft=isRightEye?halfWidth:0;
+      const eyeWidth=isRightEye?canvasRect.width-halfWidth:halfWidth;
+      mouse.x=((localX-eyeLeft)/eyeWidth)*2-1;
+      mouse.y=-(localY/canvasRect.height)*2+1;
+      pickCamera=isRightEye?stereoCamera.cameraR:stereoCamera.cameraL;
+    } else {
+      const halfHeight=canvasRect.height/2;
+      const isRightEye=localY>=halfHeight;
+      const eyeTop=isRightEye?halfHeight:0;
+      const eyeHeight=isRightEye?canvasRect.height-halfHeight:halfHeight;
+      mouse.x=(localX/canvasRect.width)*2-1;
+      mouse.y=-((localY-eyeTop)/eyeHeight)*2+1;
+      pickCamera=isRightEye?stereoCamera.cameraR:stereoCamera.cameraL;
+    }
+  }
+  raycaster.setFromCamera(mouse,pickCamera);
+  const intersects = raycaster.intersectObjects(faceMeshes,false);
+  if(intersects.length>0) openFace(intersects[0].object.userData.index);
+}
+
+renderer.domElement.addEventListener('click', (e)=>{
+  if(suppressCanvasClick){
+    suppressCanvasClick = false;
+    clearTimeout(suppressCanvasClickTimer);
+    return;
+  }
+  openFaceAtPointer(e.clientX,e.clientY);
+});
+
+let isDragging = false;
+let dragMoved = false;
+let previousMousePosition = {x:0, y:0};
+let pointerDownPosition = {x:0,y:0};
+let pointerVelocity = {x:0,y:0};
+
+renderer.domElement.addEventListener('pointerdown', (e)=>{
+  if(e.button !== 0 || cube.userData.animating) return;
+  isDragging = true;
+  dragMoved = false;
+  pointerDownPosition = {x:e.clientX,y:e.clientY};
+  renderer.domElement.setPointerCapture(e.pointerId);
+  previousMousePosition = {x:e.clientX, y:e.clientY};
+});
+
+renderer.domElement.addEventListener('pointermove', (e)=>{
+  if(isDragging){
+    const totalMoveX = e.clientX-pointerDownPosition.x;
+    const totalMoveY = e.clientY-pointerDownPosition.y;
+    if(!dragMoved && Math.hypot(totalMoveX,totalMoveY) > 14) dragMoved = true;
+    if(!dragMoved) return;
+    const deltaMove = {x:e.clientX - previousMousePosition.x, y:e.clientY - previousMousePosition.y};
+    pointerVelocity.x = deltaMove.x * 0.01;
+    pointerVelocity.y = deltaMove.y * 0.01;
+    cube.rotation.y += pointerVelocity.x;
+    cube.rotation.x += pointerVelocity.y;
+    handRotationTarget.set(cube.rotation.x,cube.rotation.y);
+    previousMousePosition = {x:e.clientX, y:e.clientY};
+  }
+});
+
+renderer.domElement.addEventListener('pointerup', ()=>{
+  isDragging = false;
+  if(dragMoved){
+    suppressCanvasClick = true;
+    clearTimeout(suppressCanvasClickTimer);
+    suppressCanvasClickTimer = setTimeout(()=>{suppressCanvasClick=false;},250);
+  }
+  dragMoved = false;
+});
+renderer.domElement.addEventListener('pointercancel', ()=>{
+  isDragging = false;
+  dragMoved = false;
+});
+renderer.domElement.addEventListener('wheel', (e)=>{
+  e.preventDefault();
+  camera.position.z = THREE.MathUtils.clamp(camera.position.z + e.deltaY*0.008,4.8,14);
+},{passive:false});
+
+function normalizeAngle(a){
+  while(a > Math.PI) a -= Math.PI*2;
+  while(a < -Math.PI) a += Math.PI*2;
+  return a;
+}
+
+function spinToFace(index, duration=0.8){
+  if(index < 0 || index >= faceRotationTargets.length) return;
+  const target = faceRotationTargets[index];
+  cube.userData.animating = true;
+  gsap.killTweensOf(cube.rotation);
+  const start = {x:cube.rotation.x, y:cube.rotation.y, z:cube.rotation.z};
+  const end = {x:target.x, y:target.y, z:target.z};
+  end.x = start.x + normalizeAngle(end.x - start.x);
+  end.y = start.y + normalizeAngle(end.y - start.y);
+  end.z = start.z + normalizeAngle(end.z - start.z);
+  gsap.to(cube.rotation, {x:end.x, y:end.y, z:end.z, duration: duration, ease:'power2.inOut', onComplete: ()=>{ 
+    cube.userData.animating=false; 
+  }});
+}
+
+window.addEventListener('keydown', (e)=>{
+  if(e.key==='Escape' && overlay.style.display==='flex' && !slideEditorDialog.open){
+    document.getElementById('exitBtn')?.click();
+    return;
+  }
+  if(e.key==='Escape' && stereoMode!=='off' && !slideEditorDialog.open){
+    setStereoMode('off');
+    return;
+  }
+  const activeTag=document.activeElement?.tagName;
+  if(slideEditorDialog.open || activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') return;
+  if(e.altKey || e.ctrlKey || e.metaKey) return;
+  const key=e.key.toLowerCase();
+  if(key === 'p'){
+    if(startingSlideIndex >= 0) spinToFace(startingSlideIndex);
+    return;
+  }
+  if(key === 'o'){
+    if(endingSlideIndex >= 0) spinToFace(endingSlideIndex);
+    return;
+  }
+  const digitMatch=e.code.match(/^(?:Digit|Numpad)([0-9])$/);
+  if(!digitMatch) return;
+  const digit=Number(digitMatch[1]);
+  if(e.shiftKey){
+    const slideIndex=digit===0?9:9+digit;
+    if(slideIndex<slideMetadata.length) spinToFace(slideIndex);
+    return;
+  }
+  if(digit===0){
+    if(startingSlideIndex>=0) spinToFace(startingSlideIndex);
+  } else if(digit===9){
+    if(endingSlideIndex>=0) spinToFace(endingSlideIndex);
+  } else if(digit<slideMetadata.length){
+    spinToFace(digit);
+  }
+});
+
+function animate(){
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  const frameInterval = 1000/targetFps;
+  const elapsed = now-lastFrameTime;
+  if(elapsed < frameInterval) return;
+  const frameScale = Math.min(elapsed/frameInterval,3);
+  lastFrameTime = now;
+  if(overlay.style.display === 'flex' || startupScreen.style.display !== 'none' || document.hidden){
+    return;
+  }
+
+  if(!cube.userData.animating) glowCube.rotation.copy(cube.rotation);
+  if(!cube.userData.animating) roundedShell.rotation.copy(cube.rotation);
+
+  const time = now * 0.001;
+  illusionBackground.position.copy(camera.position);
+  illusionBackground.quaternion.copy(camera.quaternion);
+  illusionBackground.rotateY(time*0.015+Math.sin(time*0.11)*0.025);
+  illusionBackground.rotateX(Math.sin(time*0.08)*0.012);
+  liquidMaterial.uniforms.uTime.value = time;
+  faceGradientMaterials.forEach(material=>{
+    material.userData.gradientTime.value = time;
+  });
+  fluidBars.rotation.z = time*0.12;
+  for(let i=0;i<fluidBarCount;i++){
+    const pulse = 0.55 + 0.45*(0.5 + 0.5*Math.sin(time*2.4 + fluidBarPhases[i]));
+    const transform = fluidBarTransforms[i];
+    transform.scale.set(1,pulse,1);
+    transform.updateMatrix();
+    fluidBars.setMatrixAt(i,transform.matrix);
+  }
+  fluidBars.instanceMatrix.needsUpdate = true;
+
+  if(rumbleState.value > 0.001){
+    camera.position.x = cameraHome.x + (Math.random()-0.5)*0.11*rumbleState.value;
+    camera.position.y = cameraHome.y + (Math.random()-0.5)*0.11*rumbleState.value;
+  } else {
+    camera.position.x = cameraHome.x;
+    camera.position.y = cameraHome.y;
+  }
+  if(!isDragging && !cube.userData.animating){
+    cube.rotation.y += pointerVelocity.x*frameScale;
+    cube.rotation.x += pointerVelocity.y*frameScale;
+    const decay = Math.pow(0.94,frameScale);
+    pointerVelocity.x *= decay;
+    pointerVelocity.y *= decay;
+  }
+  if(cube.userData.animating){
+    handRotationTarget.set(cube.rotation.x,cube.rotation.y);
+    handScaleTarget = cube.scale.x;
+    handZoomTarget = camera.position.z;
+  } else if(hasHandControlInput && !isDragging){
+    const smoothing = 1-Math.pow(1-0.2,frameScale);
+    cube.rotation.x = THREE.MathUtils.lerp(cube.rotation.x,handRotationTarget.x,smoothing);
+    cube.rotation.y = THREE.MathUtils.lerp(cube.rotation.y,handRotationTarget.y,smoothing);
+    cube.scale.setScalar(THREE.MathUtils.lerp(cube.scale.x,handScaleTarget,smoothing));
+    camera.position.z = THREE.MathUtils.lerp(camera.position.z,handZoomTarget,smoothing);
+  }
+
+  if(stereoMode==='off') renderer.render(scene,camera);
+  else renderStereoScene();
+
+  if(typeof window.__framesRendered === 'undefined') window.__framesRendered = 0;
+  window.__framesRendered++;
+}
+animate();
+
+let fpsWindowStart = performance.now();
+setInterval(()=>{
+  const el = document.getElementById('fpsDisplay');
+  if(!el) return;
+  const now = performance.now();
+  if(overlay.style.display === 'flex' || startupScreen.style.display !== 'none' || document.hidden){
+    window.__framesRendered = 0;
+    fpsWindowStart = now;
+    el.textContent = 'FPS: --';
+    return;
+  }
+  const frames = window.__framesRendered || 0;
+  const fps = Math.min(targetFps,Math.round(frames*1000/(now-fpsWindowStart)));
+  fpsWindowStart = now;
+  el.textContent = `FPS: ${fps}`;
+  el.style.color = (fps < targetFps*0.9) ? '#ff8a00' : 'white';
+  window.__framesRendered = 0;
+}, 500);
+</script>
+</body>
+</html>
