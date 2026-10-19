@@ -2255,7 +2255,6 @@ function videoExists(videoUrl){
 
 async function detectSlideImages(){
   startupStatus.textContent = uiText[currentLanguage].detectingImages;
-  if(window.location.protocol === 'file:') return; // Skip local folder scanning when running locally via file://
 
   for(let index=0;index<slideMetadata.length;index++){
     const slideNumber=index+1;
@@ -2267,7 +2266,7 @@ async function detectSlideImages(){
 
     for(const name of baseNames){
       for(const ext of ['glb', 'gltf', 'png', 'jpg', 'webp', 'mp4', 'webm']){
-        const candidate = `./assets/${name}.${ext}`;
+        const candidate = `https://charcoal-hash.github.io/SirRonaldLeRouge/assets/${name}.${ext}`;
         try {
           const exists = ['glb', 'gltf'].includes(ext) 
             ? await modelExists(candidate)
@@ -3061,5 +3060,41 @@ setInterval(()=>{
   window.__framesRendered = 0;
 }, 500);
 </script>
+
+<script id="reqTerminalScript">
+(function() {
+  if (document.getElementById("reqTerminal")) return;
+  const t = document.createElement("div");
+  t.id = "reqTerminal";
+  t.style.cssText = "position:fixed; bottom:16px; left:16px; width:340px; height:150px; background:rgba(0,0,0,0.85); color:#00ffcc; font-family:monospace; font-size:11px; padding:8px; border:1px solid #00ffcc; border-radius:6px; z-index:999999; overflow-y:auto; pointer-events:auto; box-shadow:0 4px 12px rgba(0,0,0,0.5);";
+  t.innerHTML = '<div style="font-weight:bold; border-bottom:1px solid #00ffcc; margin-bottom:4px; padding-bottom:2px; display:flex; justify-content:space-between;"><span>Network Requests</span><button onclick="this.parentElement.parentElement.remove()" style="background:none; border:none; color:#00ffcc; cursor:pointer; font-weight:bold;">&times;</button></div><div id="reqLog"></div>';
+  document.body.appendChild(t);
+  
+  const log = function(url, type, status) {
+    const l = document.getElementById("reqLog");
+    if (!l) return;
+    const d = document.createElement("div");
+    d.style.cssText = "margin:2px 0; color:" + (status === "OK" ? "#00ffcc" : "#ff5555");
+    d.textContent = "[" + type + "] " + status + ": " + url.split("/").pop();
+    l.appendChild(d);
+    t.scrollTop = t.scrollHeight;
+  };
+
+  const origFetch = window.fetch;
+  window.fetch = async function() {
+    const args = arguments;
+    const url = args[0];
+    try {
+      const res = await origFetch.apply(this, args);
+      log(url, "FETCH", res.ok ? "OK" : res.status);
+      return res;
+    } catch (e) {
+      log(url, "FETCH", "FAIL");
+      throw e;
+    }
+  };
+})();
+</script>
+
 </body>
 </html>
